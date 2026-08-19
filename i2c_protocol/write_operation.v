@@ -127,7 +127,38 @@ ack_addr:begin
 	end
 	end
 end
+pointer_addr:begin
+	if((scl_out==1'b0)&&(clk_div==8'd25))begin
+	sda_out<=pointer_reg[7];
+	end
+	if((scl_out==1'b1)&&(clk_div==8'd49))begin
+		if(bit_count==3'd0)begin
+		next_state<=ack_pointer;
+		end
+		else begin
+			pointer_reg<={pointer_reg[6:0],1'b0};
+		bit_count<=bit_count-1'b1;
+		end
+	end
+end
 
+ack_addr:begin
+	if((scl_out == 1'b0) &&(clk_div == 8'd25)) begin
+		sda_out<=1'b1;
+	end
+	if ((scl_out == 1'b1) &&(clk_div == 8'd49)) begin
+
+       	 if (sda == 1'b0) begin
+			data_reg<=tx_data;
+			bit_count<=3'd7;
+			next_state<=send_data;
+	end
+	else begin
+		ack_error<=1'b1;
+		next_state<=stop;
+	end
+	end
+end
 
 send_data:begin
 	if((scl_out==1'b0)&&(clk_div==8'd25))begin

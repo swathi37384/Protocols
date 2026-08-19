@@ -29,6 +29,17 @@ reg sda_out,scl_out;
 assign sda=(sda_out==1'b0)?1'b0:1'bz;
 assign scl=(scl_out==1'b0)?1'b0:1'bz;
 
+wire scl_toggle;
+wire scl_rise;
+wire scl_fall;
+assign scl_toggle = scl_en && (clk_div == 8'd49);
+
+// scl_out = 0 before toggle means next transition is rising
+assign scl_rise = scl_toggle && (scl_out == 1'b0);
+
+// scl_out = 1 before toggle means next transition is falling
+assign scl_fall = scl_toggle && (scl_out == 1'b1);
+
 //main fsm
 reg [7:0]clk_div;
 reg scl_en;

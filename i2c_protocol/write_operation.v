@@ -119,7 +119,8 @@ ack_addr:begin
        	 if (sda == 1'b0) begin
 			data_reg<=tx_data;
 			bit_count<=3'd7;
-			next_state<=send_data;
+			 pointer_reg<=pointer_add;
+			next_state<=pointer_addr;
 	end
 	else begin
 		ack_error<=1'b1;
@@ -133,7 +134,7 @@ pointer_addr:begin
 	end
 	if((scl_out==1'b1)&&(clk_div==8'd49))begin
 		if(bit_count==3'd0)begin
-		next_state<=ack_pointer;
+		next_state<=pointer_ack;
 		end
 		else begin
 			pointer_reg<={pointer_reg[6:0],1'b0};
@@ -142,14 +143,14 @@ pointer_addr:begin
 	end
 end
 
-ack_addr:begin
+pointer_ack:begin
 	if((scl_out == 1'b0) &&(clk_div == 8'd25)) begin
 		sda_out<=1'b1;
 	end
 	if ((scl_out == 1'b1) &&(clk_div == 8'd49)) begin
 
        	 if (sda == 1'b0) begin
-			data_reg<=tx_data;
+			pointer_reg<=pointer_add;
 			bit_count<=3'd7;
 			next_state<=send_data;
 	end

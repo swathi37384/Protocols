@@ -213,4 +213,5 @@ if ((scl_out == 1'b0) && (clk_div == 8'd25)) begin
 default:next_state<=idle;
 endcase
 end
+end
 endmodule

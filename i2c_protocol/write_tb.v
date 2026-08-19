@@ -18,13 +18,16 @@ wire ack_error;
 wire sda;
 wire scl;
 
-reg slave_ack;
+reg slave_sda_drive;
 
-assign sda = (slave_ack == 1'b1) ? 1'b0 : 1'bz;
+// Open-drain slave SDA
+assign sda = (slave_sda_drive == 1'b0) ? 1'b0 : 1'bz;
 
+// I2C pull-ups
 pullup(sda);
 pullup(scl);
 
+// DUT
 write dut (
     .clk(clk),
     .rst(rst),
@@ -40,28 +43,29 @@ write dut (
     .scl(scl)
 );
 
+// 100 MHz clock
 initial begin
     clk = 1'b0;
     forever #5 clk = ~clk;
 end
 
-// Slave ACK
+// Slave ACK generation
 always @(*) begin
 
-    slave_ack = 1'b0;
+    slave_sda_drive = 1'b1;
 
     if (dut.state == dut.ack_addr)
-        slave_ack = 1'b1;
+        slave_sda_drive = 1'b0;
 
     else if (dut.state == dut.pointer_ack)
-        slave_ack = 1'b1;
+        slave_sda_drive = 1'b0;
 
     else if (dut.state == dut.data_ack)
-        slave_ack = 1'b1;
+        slave_sda_drive = 1'b0;
 
 end
 
-// Test
+// Test sequence
 initial begin
 
     rst         = 1'b1;
@@ -72,26 +76,28 @@ initial begin
     pointer_add = 8'h20;
     tx_data     = 8'hA0;
 
+    // Reset
     #50;
     rst = 1'b0;
 
+    // Wait
     #50;
 
-    // Start write
+    // Start transaction
     s = 1'b1;
     #10;
     s = 1'b0;
 
-    // Wait until write is complete
+    // Wait until transaction completes
     wait(done == 1'b1);
 
-    $display("--------------------------------");
+    $display("--------------------------------------");
     $display("WRITE TRANSACTION COMPLETED");
     $display("Slave Address = %h", slave_add);
     $display("Pointer       = %h", pointer_add);
     $display("Data          = %h", tx_data);
     $display("ACK Error     = %b", ack_error);
-    $display("--------------------------------");
+    $display("--------------------------------------");
 
     #100;
 
@@ -115,7 +121,7 @@ initial begin
 
 end
 
-// Waveform
+// VCD waveform
 initial begin
 
     $dumpfile("write.vcd");

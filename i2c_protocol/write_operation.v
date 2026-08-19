@@ -42,12 +42,15 @@ if(rst)begin
 	bit_count<=3'd0;
 	clk_div<=8'd0;
 	scl_en<=1'b0;
+	busy<=1'b0;
+	done<=1'b0;
+	ack_error<=1'b0;
 	
 end
 else begin
 if (scl_en) begin
 
-                if (clk_div == 8'd124) begin
+                if (clk_div == 8'd49) begin
 
                     clk_div <= 8'd0;
                     scl_out <= ~scl_out;
@@ -74,8 +77,10 @@ idle: begin
 	scl_en<=1'b0;
 	sda_out<=1'b1;
 	scl_out<=1'b1;
-
+	busy<=1'b0;
+	done<=1'b0;
 	if(s)begin
+	busy<=1'b1;
 	addr_reg<={slave_add,rw};
 	bit_count<=3'd7;
 	next_state<=start;
@@ -91,10 +96,10 @@ start: begin
 end
 	
 send_addr:begin
-	if((scl_out==1'b0)&&(clk_div==8'd62))begin
+	if((scl_out==1'b0)&&(clk_div==8'd25))begin
 	sda_out<=addr_reg[7];
 	end
-	if((scl_out==1'b1)&&(clk_div==8'd124))begin
+	if((scl_out==1'b1)&&(clk_div==8'd49))begin
 		if(bit_count==3'd0)begin
 		next_state<=ack_addr;
 		end
@@ -106,10 +111,10 @@ send_addr:begin
 end
 
 ack_addr:begin
-	if((scl_out == 1'b0) &&(clk_div == 8'd62)) begin
+	if((scl_out == 1'b0) &&(clk_div == 8'd25)) begin
 		sda_out<=1'b1;
 	end
-	if ((scl_out == 1'b1) &&(clk_div == 8'd124)) begin
+	if ((scl_out == 1'b1) &&(clk_div == 8'd49)) begin
 
        	 if (sda == 1'b0) begin
 			data_reg<=tx_data;
@@ -117,16 +122,18 @@ ack_addr:begin
 			next_state<=send_data;
 	end
 	else begin
+		ack_error<=1'b1;
 		next_state<=stop;
 	end
 	end
 end
 
+
 send_data:begin
-	if((scl_out==1'b0)&&(clk_div==8'd62))begin
+	if((scl_out==1'b0)&&(clk_div==8'd25))begin
 	sda_out<=data_reg[7];
 	end
-	if((scl_out==1'b1)&&(clk_div==8'd124))begin
+	if((scl_out==1'b1)&&(clk_div==8'd49))begin
 		if(bit_count==3'd0)begin
 		next_state<=data_ack;
 		end
@@ -138,22 +145,23 @@ send_data:begin
 end		
 
 data_ack:begin
-	if((scl_out == 1'b0) &&(clk_div == 8'd62)) begin
+	if((scl_out == 1'b0) &&(clk_div == 8'd25)) begin
 		sda_out<=1'b1;
 	end
-	if ((scl_out == 1'b1) &&(clk_div == 8'd124)) begin
+	if ((scl_out == 1'b1) &&(clk_div == 8'd49)) begin
 
        	 if (sda == 1'b0) begin
 			next_state<=stop;
 	end
 	else begin
+		ack_error<=1'b1;
 		next_state<=stop;
 	end
 	end
 end
 
 stop:begin
-if ((scl_out == 1'b0) && (clk_div == 8'd62)) begin
+if ((scl_out == 1'b0) && (clk_div == 8'd25)) begin
                         sda_out <= 1'b0;
 
                     end
@@ -161,6 +169,8 @@ if ((scl_out == 1'b0) && (clk_div == 8'd62)) begin
 
                         scl_en  <= 1'b0;
                         sda_out <= 1'b1;
+			busy<=1'b0;
+			done<=1'b1;
 
                         next_state <= idle;
 

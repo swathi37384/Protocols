@@ -26,162 +26,101 @@ pullup(sda);
 pullup(scl);
 
 write dut (
-	    .clk(clk),
-	        .rst(rst),
-		    .s(s),
-		        .rw(rw),
-			    .slave_add(slave_add),
-			        .pointer_add(pointer_add),
-				    .tx_data(tx_data),
-				        .busy(busy),
-					    .done(done),
-					        .ack_error(ack_error),
-						    .sda(sda),
-						        .scl(scl)
-						);
+    .clk(clk),
+    .rst(rst),
+    .s(s),
+    .rw(rw),
+    .slave_add(slave_add),
+    .pointer_add(pointer_add),
+    .tx_data(tx_data),
+    .busy(busy),
+    .done(done),
+    .ack_error(ack_error),
+    .sda(sda),
+    .scl(scl)
+);
 
-						initial begin
-							    clk = 1'b0;
-							        forever #5 clk = ~clk;
-							end
+initial begin
+    clk = 1'b0;
+    forever #5 clk = ~clk;
+end
 
-							// Slave ACK
-							// always @(*) begin
-							//
-							//     slave_ack
-							//     = 1'b0;
-							//
-							//         if
-							//         (dut.state
-							//         ==
-							//         dut.ack_addr)
-							//                 slave_ack
-							//                 = 1'b1;
-							//
-							//                     else
-							//                     if
-							//                     (dut.state
-							//                     ==
-							//                     dut.pointer_ack)
-							//                             slave_ack
-							//                             = 1'b1;
-							//
-							//                                 else
-							//                                 if
-							//                                 (dut.state
-							//                                 ==
-							//                                 dut.data_ack)
-							//                                         slave_ack
-							//                                         = 1'b1;
-							//
-							//                                         end
-							//
-							//                                         //
-							//                                         Test
-							//                                         initial
-							//                                         begin
-							//
-							//                                             rst
-							//                                             = 1'b1;
-							//                                                 s           = 1'b0;
-							//                                                     rw
-							//                                                     = 1'b0;
-							//
-							//                                                         slave_add
-							//                                                         = 7'h5A;
-							//                                                             pointer_add
-							//                                                             = 8'h20;
-							//                                                                 tx_data
-							//                                                                 = 8'hA0;
-							//
-							//                                                                     #50;
-							//                                                                         rst
-							//                                                                         = 1'b0;
-							//
-							//                                                                             #50;
-							//
-							//                                                                                 //
-							//                                                                                 Start
-							//                                                                                 write
-							//                                                                                     s = 1'b1;
-							//                                                                                         #10;
-							//                                                                                             s = 1'b0;
-							//
-							//                                                                                                 //
-							//                                                                                                 Wait
-							//                                                                                                 until
-							//                                                                                                 write
-							//                                                                                                 is
-							//                                                                                                 complete
-							//                                                                                                     wait(done
-							//                                                                                                     ==
-							//                                                                                                     1'b1);
-							//
-							//                                                                                                         $display("--------------------------------");
-							//                                                                                                             $display("WRITE
-							//                                                                                                             TRANSACTION
-							//                                                                                                             COMPLETED");
-							//                                                                                                                 $display("Slave
-							//                                                                                                                 Address
-							//                                                                                                                 = %
-							//                                                                                                                 h",
-							//                                                                                                                 slave_add);
-							//                                                                                                                     $display("Pointer
-							//                                                                                                                     = %
-							//                                                                                                                     h",
-							//                                                                                                                     pointer_add);
-							//                                                                                                                         $display("Data
-							//                                                                                                                         = %
-							//                                                                                                                         h",
-							//                                                                                                                         tx_data);
-							//                                                                                                                             $display("ACK
-							//                                                                                                                             Error
-							//                                                                                                                             = %
-							//                                                                                                                             b",
-							//                                                                                                                             ack_error);
-							//                                                                                                                                 $display("--------------------------------");
-							//
-							//                                                                                                                                     #100;
-							//
-							//                                                                                                                                         $finish;
-							//
-							//                                                                                                                                         end
-							//
-							//                                                                                                                                         //
-							//                                                                                                                                         Monitor
-							//                                                                                                                                         initial
-							//                                                                                                                                         begin
-							//
-							//                                                                                                                                             $monitor(
-							//                                                                                                                                                     "Time=%
-							//                                                                                                                                                     0t
-							//                                                                                                                                                     | State=%
-							//                                                                                                                                                     d | SDA=%
-							//                                                                                                                                                     b | SCL=%
-							//                                                                                                                                                     b | Busy=%
-							//                                                                                                                                                     b | Done=%
-							//                                                                                                                                                     b | ACK_Error=%
-							//                                                                                                                                                     b",
-							//                                                                                                                                                             $time,
-							//                                                                                                                                                                     dut.state,
-							//                                                                                                                                                                             sda,
-							//                                                                                                                                                                                     scl,
-							//                                                                                                                                                                                             busy,
-							//                                                                                                                                                                                                     done,
-							//                                                                                                                                                                                                             ack_error
-							//                                                                                                                                                                                                                 );
-							//
-							//                                                                                                                                                                                                                 end
-							//
-							//                                                                                                                                                                                                                 //
-							//                                                                                                                                                                                                                 Waveform
-							//                                                                                                                                                                                                                 initial
-							//                                                                                                                                                                                                                 begin
-							//
-							//                                                                                                                                                                                                                     $dumpfile("write.vcd");
-							//                                                                                                                                                                                                                         $dumpvars(0,
-							//                                                                                                                                                                                                                         tb_write);
-							//
-							//                                                                                                                                                                                                                         end
-							//
-							//                                                                                                                                                                                                                         endmodule
+// Slave ACK
+always @(*) begin
+
+    slave_ack = 1'b0;
+
+    if (dut.state == dut.ack_addr)
+        slave_ack = 1'b1;
+
+    else if (dut.state == dut.pointer_ack)
+        slave_ack = 1'b1;
+
+    else if (dut.state == dut.data_ack)
+        slave_ack = 1'b1;
+
+end
+
+// Test
+initial begin
+
+    rst         = 1'b1;
+    s           = 1'b0;
+    rw          = 1'b0;
+
+    slave_add   = 7'h5A;
+    pointer_add = 8'h20;
+    tx_data     = 8'hA0;
+
+    #50;
+    rst = 1'b0;
+
+    #50;
+
+    // Start write
+    s = 1'b1;
+    #10;
+    s = 1'b0;
+
+    // Wait until write is complete
+    wait(done == 1'b1);
+
+    $display("--------------------------------");
+    $display("WRITE TRANSACTION COMPLETED");
+    $display("Slave Address = %h", slave_add);
+    $display("Pointer       = %h", pointer_add);
+    $display("Data          = %h", tx_data);
+    $display("ACK Error     = %b", ack_error);
+    $display("--------------------------------");
+
+    #100;
+
+    $finish;
+
+end
+
+// Monitor
+initial begin
+
+    $monitor(
+        "Time=%0t | State=%d | SDA=%b | SCL=%b | Busy=%b | Done=%b | ACK_Error=%b",
+        $time,
+        dut.state,
+        sda,
+        scl,
+        busy,
+        done,
+        ack_error
+    );
+
+end
+
+// Waveform
+initial begin
+
+    $dumpfile("write.vcd");
+    $dumpvars(0, tb_write);
+
+end
+
+endmodule

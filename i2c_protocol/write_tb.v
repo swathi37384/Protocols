@@ -71,7 +71,7 @@ initial begin
     s           = 1'b0;
     rw          = 1'b0;
 
-    slave_add   = 7'h5A;
+    slave_add   = 7'h55;
     pointer_add = 8'h20;
     tx_data     = 8'hA0;
 

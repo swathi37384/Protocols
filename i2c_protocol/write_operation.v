@@ -33,14 +33,14 @@ assign scl=(scl_out==1'b0)?1'b0:1'bz;
 reg [7:0]clk_div;
 reg scl_en;
 
-always@(posedge clk)begin
+//state logic
+always@(posedge clk or posedge rst)begin
 if(rst)begin
 	state<=idle;
 	sda_out<=0;
 	scl_out<=0;
 	addr_reg<=8'd0;
 	bit_count<=3'd0;
-	clk_div<=8'd0;
 	scl_en<=1'b0;
 	busy<=1'b0;
 	done<=1'b0;
@@ -48,7 +48,17 @@ if(rst)begin
 	
 end
 else begin
-if (scl_en) begin
+	state<=next_state;
+end
+end
+
+//scl clk
+always@(posedge clk or posedge rst)begin
+	if(rst)begin
+		clk_div<=0;
+		scl_out<=1'b1;
+	end
+	else if (scl_en) begin
 
                 if (clk_div == 8'd49) begin
 
@@ -65,11 +75,17 @@ if (scl_en) begin
 
             end
 
-            else begin
+          else begin 
 
                 clk_div <= 8'd0;
+		scl_out<=1'b1;
 
             end
+    end
+
+    //next state logic
+
+    
 state<=next_state;
 case(state)
 
@@ -109,7 +125,6 @@ send_addr:begin
 		end
 	end
 end
-
 ack_addr:begin
 	if((scl_out == 1'b0) &&(clk_div == 8'd25)) begin
 		sda_out<=1'b1;
@@ -117,7 +132,6 @@ ack_addr:begin
 	if ((scl_out == 1'b1) &&(clk_div == 8'd49)) begin
 
        	 if (sda == 1'b0) begin
-			data_reg<=tx_data;
 			bit_count<=3'd7;
 			 pointer_reg<=pointer_add;
 			next_state<=pointer_addr;

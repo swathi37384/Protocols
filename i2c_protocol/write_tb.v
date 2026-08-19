@@ -1,350 +1,126 @@
 `timescale 1ns/1ps
 
-module write(
-    input clk,
-    input rst,
-    input s,
-    input rw,
-    input [6:0] slave_add,
-    input [7:0] pointer_add,
-    input [7:0] tx_data,
-    output reg busy,
-    output reg done,
-    output reg ack_error,
-    inout sda,
-    inout scl
+module tb_write;
+
+reg clk;
+reg rst;
+reg s;
+reg rw;
+
+reg [6:0] slave_add;
+reg [7:0] pointer_add;
+reg [7:0] tx_data;
+
+wire busy;
+wire done;
+wire ack_error;
+
+wire sda;
+wire scl;
+
+reg slave_sda_drive;
+
+// Open-drain slave SDA
+assign sda = (slave_sda_drive == 1'b0) ? 1'b0 : 1'bz;
+
+pullup(sda);
+pullup(scl);
+
+// DUT
+write dut (
+    .clk(clk),
+    .rst(rst),
+    .s(s),
+    .rw(rw),
+    .slave_add(slave_add),
+    .pointer_add(pointer_add),
+    .tx_data(tx_data),
+    .busy(busy),
+    .done(done),
+    .ack_error(ack_error),
+    .sda(sda),
+    .scl(scl)
 );
 
-parameter idle         = 4'd0,
-          start        = 4'd1,
-          send_addr    = 4'd2,
-          ack_addr     = 4'd3,
-          pointer_addr = 4'd5,
-          pointer_ack  = 4'd6,
-          send_data    = 4'd7,
-          data_ack     = 4'd8,
-          stop         = 4'd9;
+// 100 MHz clock
+initial begin
+    clk = 1'b0;
+    forever #5 clk = ~clk;
+end
 
-reg [3:0] state;
-reg [3:0] next_state;
+// Slave ACK
+always @(*) begin
 
-reg [7:0] addr_reg;
-reg [7:0] data_reg;
-reg [7:0] pointer_reg;
+    slave_sda_drive = 1'b1;
 
-reg [2:0] bit_count;
+    if (dut.state == dut.ack_addr)
+        slave_sda_drive = 1'b0;
 
-reg sda_out;
-reg scl_out;
+    else if (dut.state == dut.pointer_ack)
+        slave_sda_drive = 1'b0;
 
-reg [7:0] clk_div;
-reg scl_en;
+    else if (dut.state == dut.data_ack)
+        slave_sda_drive = 1'b0;
 
-assign sda = (sda_out == 1'b0) ? 1'b0 : 1'bz;
-assign scl = (scl_out == 1'b0) ? 1'b0 : 1'bz;
+end
 
-always @(posedge clk) begin
+// Test
+initial begin
 
-    if (rst) begin
+    rst         = 1'b1;
+    s           = 1'b0;
+    rw          = 1'b0;
 
-        state      <= idle;
-        next_state <= idle;
+    slave_add   = 7'h5A;
+    pointer_add = 8'h20;
+    tx_data     = 8'hA0;
 
-        sda_out    <= 1'b1;
-        scl_out    <= 1'b1;
+    #50;
+    rst = 1'b0;
 
-        addr_reg   <= 8'd0;
-        data_reg   <= 8'd0;
-        pointer_reg <= 8'd0;
+    #50;
 
-        bit_count  <= 3'd0;
-        clk_div    <= 8'd0;
-        scl_en     <= 1'b0;
+    // Start write transaction
+    s = 1'b1;
+    #10;
+    s = 1'b0;
 
-        busy       <= 1'b0;
-        done       <= 1'b0;
-        ack_error  <= 1'b0;
+    // Wait for completion
+    wait(done == 1'b1);
 
-    end
+    $display("--------------------------------------");
+    $display("WRITE TRANSACTION COMPLETED");
+    $display("Slave Address = %h", slave_add);
+    $display("Pointer       = %h", pointer_add);
+    $display("Data          = %h", tx_data);
+    $display("ACK Error     = %b", ack_error);
+    $display("--------------------------------------");
 
-    else begin
+    #100;
 
-        // SCL clock generation
-        if (scl_en) begin
+    $finish;
+end
 
-            if (clk_div == 8'd49) begin
-                clk_div <= 8'd0;
-                scl_out <= ~scl_out;
-            end
+// Monitor
+initial begin
 
-            else begin
-                clk_div <= clk_div + 1'b1;
-            end
+    $monitor(
+        "Time=%0t | State=%d | SDA=%b | SCL=%b | Busy=%b | Done=%b | ACK_Error=%b",
+        $time,
+        dut.state,
+        sda,
+        scl,
+        busy,
+        done,
+        ack_error
+    );
 
-        end
+end
 
-        else begin
-            clk_div <= 8'd0;
-        end
-
-        state <= next_state;
-
-        case (state)
-
-            idle: begin
-
-                scl_en    <= 1'b0;
-                sda_out   <= 1'b1;
-                scl_out   <= 1'b1;
-
-                busy      <= 1'b0;
-                done      <= 1'b0;
-                ack_error <= 1'b0;
-
-                if (s) begin
-
-                    busy      <= 1'b1;
-
-                    addr_reg  <= {slave_add, rw};
-                    data_reg  <= tx_data;
-                    pointer_reg <= pointer_add;
-
-                    bit_count <= 3'd7;
-
-                    next_state <= start;
-
-                end
-
-            end
-
-
-            start: begin
-
-                scl_out <= 1'b1;
-                sda_out <= 1'b0;
-                scl_en  <= 1'b1;
-
-                next_state <= send_addr;
-
-            end
-
-
-            send_addr: begin
-
-                if ((scl_out == 1'b0) &&
-                    (clk_div == 8'd25)) begin
-
-                    sda_out <= addr_reg[7];
-
-                end
-
-                if ((scl_out == 1'b1) &&
-                    (clk_div == 8'd49)) begin
-
-                    if (bit_count == 3'd0) begin
-
-                        next_state <= ack_addr;
-
-                    end
-
-                    else begin
-
-                        addr_reg <= {addr_reg[6:0],1'b0};
-                        bit_count <= bit_count - 1'b1;
-
-                    end
-
-                end
-
-            end
-
-
-            ack_addr: begin
-
-                if ((scl_out == 1'b0) &&
-                    (clk_div == 8'd25)) begin
-
-                    sda_out <= 1'b1;
-
-                end
-
-                if ((scl_out == 1'b1) &&
-                    (clk_div == 8'd49)) begin
-
-                    if (sda == 1'b0) begin
-
-                        bit_count <= 3'd7;
-                        next_state <= pointer_addr;
-
-                    end
-
-                    else begin
-
-                        ack_error <= 1'b1;
-                        next_state <= stop;
-
-                    end
-
-                end
-
-            end
-
-
-            pointer_addr: begin
-
-                if ((scl_out == 1'b0) &&
-                    (clk_div == 8'd25)) begin
-
-                    sda_out <= pointer_reg[7];
-
-                end
-
-                if ((scl_out == 1'b1) &&
-                    (clk_div == 8'd49)) begin
-
-                    if (bit_count == 3'd0) begin
-
-                        next_state <= pointer_ack;
-
-                    end
-
-                    else begin
-
-                        pointer_reg <= {pointer_reg[6:0],1'b0};
-                        bit_count <= bit_count - 1'b1;
-
-                    end
-
-                end
-
-            end
-
-
-            pointer_ack: begin
-
-                if ((scl_out == 1'b0) &&
-                    (clk_div == 8'd25)) begin
-
-                    sda_out <= 1'b1;
-
-                end
-
-                if ((scl_out == 1'b1) &&
-                    (clk_div == 8'd49)) begin
-
-                    if (sda == 1'b0) begin
-
-                        bit_count <= 3'd7;
-                        next_state <= send_data;
-
-                    end
-
-                    else begin
-
-                        ack_error <= 1'b1;
-                        next_state <= stop;
-
-                    end
-
-                end
-
-            end
-
-
-            send_data: begin
-
-                if ((scl_out == 1'b0) &&
-                    (clk_div == 8'd25)) begin
-
-                    sda_out <= data_reg[7];
-
-                end
-
-                if ((scl_out == 1'b1) &&
-                    (clk_div == 8'd49)) begin
-
-                    if (bit_count == 3'd0) begin
-
-                        next_state <= data_ack;
-
-                    end
-
-                    else begin
-
-                        data_reg <= {data_reg[6:0],1'b0};
-                        bit_count <= bit_count - 1'b1;
-
-                    end
-
-                end
-
-            end
-
-
-            data_ack: begin
-
-                if ((scl_out == 1'b0) &&
-                    (clk_div == 8'd25)) begin
-
-                    sda_out <= 1'b1;
-
-                end
-
-                if ((scl_out == 1'b1) &&
-                    (clk_div == 8'd49)) begin
-
-                    if (sda == 1'b0) begin
-
-                        next_state <= stop;
-
-                    end
-
-                    else begin
-
-                        ack_error <= 1'b1;
-                        next_state <= stop;
-
-                    end
-
-                end
-
-            end
-
-
-            stop: begin
-
-                if ((scl_out == 1'b0) &&
-                    (clk_div == 8'd25)) begin
-
-                    sda_out <= 1'b0;
-
-                end
-
-                if (scl_out == 1'b1) begin
-
-                    scl_en <= 1'b0;
-                    sda_out <= 1'b1;
-
-                    busy <= 1'b0;
-                    done <= 1'b1;
-
-                    next_state <= idle;
-
-                end
-
-            end
-
-
-            default: begin
-
-                next_state <= idle;
-
-            end
-
-        endcase
-
-    end
-
+// VCD
+initial begin
+    $dumpfile("write.vcd");
+    $dumpvars(0, tb_write);
 end
 
 endmodule

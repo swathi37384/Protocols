@@ -144,7 +144,7 @@ next_state=idle;
 end
 
 default:next_state=idle;
-endacase
+endcase
 end
 
 
@@ -152,9 +152,9 @@ end
 //main control
 always@(posedge clk or posedge rst)begin
 if(rst)begin
-	sda_ouut<=1'b1;
+	sda_out<=1'b1;
 	scl_en<=1'b0;
-	add_reg<=8'd0;
+	addr_reg<=8'd0;
 	pointer_reg<=8'd0;
 	data_reg<=8'd0;
 	bit_count<=3'd0;
@@ -168,13 +168,13 @@ case(state)
 idle: begin
 	scl_en<=1'b0;
 	sda_out<=1'b1;
-	busy<=1'b0
+	busy<=1'b0;
 	if(s)begin
 	busy<=1'b1;
         ack_error<=1'b0;
 	addr_reg<={slave_add,rw};
 	pointer_reg<=pointer_add;
-	data-reg<=tx_data;
+	data_reg<=tx_data;
 	bit_count<=3'd7;
 	end
 end
@@ -192,7 +192,7 @@ send_addr:begin
 	if(bit_count!=3'd0)begin
 		addr_reg<={addr_reg[6:0],1'b0};
 		bit_count<=bit_count-1'b1;
-		end
+		
 	end
 end
 ack_addr:begin
@@ -215,7 +215,7 @@ pointer_addr:begin
 	if(bit_count!=3'd0)begin
 		pointer_reg<={pointer_reg[6:0],1'b0};
 		bit_count<=bit_count-1'b1;
-		end
+		
 	end
 end
 
@@ -242,7 +242,7 @@ send_data:begin
 	if(bit_count!=3'd0)begin
 		data_reg<={data_reg[6:0],1'b0};
 		bit_count<=bit_count-1'b1;
-		end
+		
 	end
 end		
 

@@ -100,7 +100,7 @@ module tb_write;
         rw         = 1'b0;       // 0 = WRITE
 
         slave_add  = 7'b1010000;
-        pointer_add = 8'h10;
+        pointer_add = 8'h39;
         tx_data     = 8'hA5;
 
         slave_sda  = 1'b1;       // Slave releases SDA
@@ -162,9 +162,7 @@ module tb_write;
                If SDA is released, slave pulls it LOW.
             */
 
-            if (dut.state == dut.ACK_ADDR ||
-                dut.state == dut.ACK_POINTER ||
-                dut.state == dut.ACK_DATA) begin
+            if (dut.state == dut.ack_addr ||dut.state == dut.pointer_addr ||dut.state == dut.data_ack) begin
 
                 slave_sda = 1'b0;
 
@@ -190,11 +188,6 @@ module tb_write;
 
     end
 
-
-    //================================================
-    // 8. MONITOR
-    //================================================
-
     initial begin
 
         $monitor(
@@ -212,10 +205,7 @@ module tb_write;
     end
 
 
-    //================================================
-    // 9. WAVEFORM DUMP
-    //================================================
-
+  
     initial begin
 
         $dumpfile("i2c_write.vcd");

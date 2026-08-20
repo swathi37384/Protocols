@@ -1,217 +1,109 @@
-`timescale 1ns/1ps
+module i2c_write_tb;
 
-module tb_write;
+reg clk_50mhz;
+reg reset;
+reg start;
 
-    //================================================
-    // 1. TESTBENCH SIGNALS
-    //================================================
+reg [6:0] slave_addr;
+reg [7:0] pointer_addr;
+reg [7:0] data_in;
 
-    reg clk;
-    reg rst;
-    reg s;
-    reg rw;
+wire busy;
+wire done;
 
-    reg [6:0] slave_add;
-    reg [7:0] pointer_add;
-    reg [7:0] tx_data;
+wire scl;
+wire sda;
 
-    wire busy;
-    wire done;
-    wire ack_error;
+reg slave_ack;
 
-    wire sda;
-    wire scl;
+i2c_write uut (
+    .clk_50mhz(clk_50mhz),
+    .reset(reset),
+    .start(start),
+    .slave_addr(slave_addr),
+    .pointer_addr(pointer_addr),
+    .data_in(data_in),
+    .busy(busy),
+    .done(done),
+    .scl(scl),
+    .sda(sda)
+);
 
+pullup(scl);
+pullup(sda);
 
-    //================================================
-    // 2. SLAVE ACK CONTROL
-    //================================================
+assign sda = slave_ack ? 1'b0 : 1'bz;
 
-    reg slave_sda;
+initial begin
+    clk_50mhz = 1'b0;
+    forever #10 clk_50mhz = ~clk_50mhz;
+end
 
-    // Slave can only pull SDA LOW.
-    // When slave_sda = 1, slave releases SDA.
+initial begin
+    reset = 1'b1;
+    start = 1'b0;
 
-    assign sda = (slave_sda == 1'b0) ? 1'b0 : 1'bz;
+    slave_addr = 7'h50;
+    pointer_addr = 8'h20;
+    data_in = 8'hA5;
 
-    // Slave does not control SCL in this simple testbench
-    assign scl = 1'bz;
+    #100;
 
+    reset = 1'b0;
 
-    //================================================
-    // 3. DUT INSTANTIATION
-    //================================================
+    #100;
 
-    write dut (
+    start = 1'b1;
 
-        .clk        (clk),
-        .rst        (rst),
-        .s          (s),
-        .rw         (rw),
+    #10000;
 
-        .slave_add  (slave_add),
-        .pointer_add(pointer_add),
-        .tx_data    (tx_data),
+    start = 1'b0;
 
-        .busy       (busy),
-        .done       (done),
-        .ack_error  (ack_error),
+    wait(done == 1'b1);
 
-        .sda        (sda),
-        .scl        (scl)
+    #200;
 
+    $display("-----------------------------------------");
+    $display("I2C WRITE TRANSACTION COMPLETED");
+    $display("-----------------------------------------");
+
+    $finish;
+end
+
+always @(*) begin
+    case (uut.state)
+
+        uut.ADDR_ACK_HIGH:
+            slave_ack = 1'b1;
+
+        uut.POINTER_ACK_HIGH:
+            slave_ack = 1'b1;
+
+        uut.DATA_ACK_HIGH:
+            slave_ack = 1'b1;
+
+        default:
+            slave_ack = 1'b0;
+
+    endcase
+end
+
+initial begin
+    $monitor(
+        "TIME=%0t | STATE=%0d | SCL=%b | SDA=%b | BIT=%0d | BUSY=%b | DONE=%b",
+        $time,
+        uut.state,
+        scl,
+        sda,
+        uut.bit_count,
+        busy,
+        done
     );
-
-
-    //================================================
-    // 4. CLOCK GENERATION
-    //================================================
-
-    // 10 ns clock period
-    // Frequency = 100 MHz
-
-    initial begin
-        clk = 1'b0;
-
-        forever #5 clk = ~clk;
-    end
-
-
-    //================================================
-    // 5. I2C PULL-UP
-    //================================================
-
-    // I2C lines need pull-up resistors.
-
-    pullup(sda);
-    pullup(scl);
-
-
-    //================================================
-    // 6. TEST SEQUENCE
-    //================================================
-
-    initial begin
-
-        // Initial values
-
-        rst        = 1'b1;
-        s          = 1'b0;
-        rw         = 1'b0;       // 0 = WRITE
-
-        slave_add  = 7'b1010000;
-        pointer_add = 8'h39;
-        tx_data     = 8'hA5;
-
-        slave_sda  = 1'b1;       // Slave releases SDA
-
-
-        // Reset
-        #100;
-
-        rst = 1'b0;
-
-
-        // Wait a little
-        #100;
-
-
-        // Start write transaction
-        s = 1'b1;
-
-
-        // Keep start request active for one clock
-        #10;
-
-        s = 1'b0;
-
-
-        // Wait until transaction finishes
-        wait(done == 1'b1);
-
-
-        #100;
-
-        $finish;
-
-    end
-
-
-    //================================================
-    // 7. SIMPLE SLAVE ACK GENERATION
-    //================================================
-
-
-    reg [3:0] ack_count;
-
-
-    initial begin
-
-        ack_count = 4'd0;
-
-        forever begin
-
-            // Wait for SCL rising edge
-
-            @(posedge scl);
-
-
-            /*
-               Master releases SDA during ACK.
-
-               If SDA is released, slave pulls it LOW.
-            */
-
-            if (dut.state == dut.ack_addr ||dut.state == dut.pointer_addr ||dut.state == dut.data_ack) begin
-
-                slave_sda = 1'b0;
-
-            end
-
-            else begin
-
-                slave_sda = 1'b1;
-
-            end
-
-
-            // Wait for SCL falling edge
-
-            @(negedge scl);
-
-
-            // Release SDA after ACK
-
-            slave_sda = 1'b1;
-
-        end
-
-    end
-
-    initial begin
-
-        $monitor(
-            "TIME=%0t | CLK=%b | SCL=%b | SDA=%b | STATE=%0d | BUSY=%b | DONE=%b | ACK_ERR=%b",
-            $time,
-            clk,
-            scl,
-            sda,
-            dut.state,
-            busy,
-            done,
-            ack_error
-        );
-
-    end
-
-
-  
-    initial begin
-
-        $dumpfile("i2c_write.vcd");
-
-        $dumpvars(0, tb_write);
-
-    end
+end
+
+initial begin
+    $dumpfile("i2c_write.vcd");
+    $dumpvars(0, i2c_write_tb);
+end
 
 endmodule

@@ -2,9 +2,6 @@
 
 module tb_I2C_protocol;
 
-    //========================================================
-    // Testbench signals
-    //========================================================
     reg clk;
     reg rst_n;
     reg start;
@@ -18,13 +15,12 @@ module tb_I2C_protocol;
     wire busy;
     wire ack_error;
 
-
-    //========================================================
-    // Slave ACK control
-    //========================================================
     reg slave_ack;
 
+
+    //========================================================
     // Slave pulls SDA LOW when slave_ack = 1
+    //========================================================
     assign sda = slave_ack ? 1'b0 : 1'bz;
 
 
@@ -46,19 +42,17 @@ module tb_I2C_protocol;
 
 
     //========================================================
-    // Clock generation
-    // 10 ns clock period = 100 MHz
+    // 100 MHz clock
     //========================================================
     always #5 clk = ~clk;
 
 
     //========================================================
-    // Test sequence
+    // Test
     //========================================================
     initial
     begin
 
-        // Initialize signals
         clk       = 1'b0;
         rst_n     = 1'b0;
         start     = 1'b0;
@@ -70,7 +64,7 @@ module tb_I2C_protocol;
 
 
         //====================================================
-        // Reset
+        // RESET
         //====================================================
         #20;
 
@@ -78,7 +72,7 @@ module tb_I2C_protocol;
 
 
         //====================================================
-        // Start I2C write
+        // START TRANSACTION
         //====================================================
         #20;
 
@@ -89,4 +83,73 @@ module tb_I2C_protocol;
         start = 1'b0;
 
 
-        //======================================
+        //====================================================
+        // Wait until address ACK
+        //====================================================
+        @(posedge scl);
+
+        // Wait until master releases SDA
+        wait (uut.state == uut.ACK1_HIGH);
+
+        slave_ack = 1'b1;
+
+        // Keep ACK active for complete ACK clock
+        @(negedge scl);
+
+        slave_ack = 1'b0;
+
+
+        //====================================================
+        // Wait until DATA ACK
+        //====================================================
+        wait (uut.state == uut.ACK2_HIGH);
+
+        slave_ack = 1'b1;
+
+        @(negedge scl);
+
+        slave_ack = 1'b0;
+
+
+        //====================================================
+        // Wait for STOP
+        //====================================================
+        wait (uut.state == uut.IDLE);
+
+        #20;
+
+        $finish;
+
+    end
+
+
+    //========================================================
+    // VCD
+    //========================================================
+    initial
+    begin
+        $dumpfile("i2c_write.vcd");
+        $dumpvars(0, tb_I2C_protocol);
+    end
+
+
+    //========================================================
+    // Monitor
+    //========================================================
+    initial
+    begin
+
+        $monitor(
+            "Time=%0t | START=%b | SCL=%b | SDA=%b | BUSY=%b | ACK_ERROR=%b | STATE=%0d",
+            $time,
+            start,
+            scl,
+            sda,
+            busy,
+            ack_error,
+            uut.state
+        );
+
+    end
+
+endmodule

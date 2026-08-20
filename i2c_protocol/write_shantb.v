@@ -1,122 +1,257 @@
-`timescale 1ns / 1ps
+`timescale 1ns/1ps
 
 module tb_I2C_protocol;
 
+    //========================================================
+    // CLOCK / RESET
+    //========================================================
+
     reg clk;
     reg rst_n;
+
+    //========================================================
+    // MASTER INPUTS
+    //========================================================
+
     reg start;
 
     reg [6:0] addr;
     reg [7:0] data;
 
+    //========================================================
+    // I2C BUS
+    //========================================================
+
     wire scl;
     wire sda;
+
+    //========================================================
+    // MASTER OUTPUTS
+    //========================================================
 
     wire busy;
     wire ack_error;
 
-    reg slave_ack;
+
+    //========================================================
+    // PULL-UP RESISTORS
+    //========================================================
+
+    pullup(scl);
+    pullup(sda);
 
 
     //========================================================
-    // Slave pulls SDA LOW when slave_ack = 1
+    // MASTER
     //========================================================
-    assign sda = slave_ack ? 1'b0 : 1'bz;
 
-
-    //========================================================
-    // DUT
-    //========================================================
-    I2C_protocol uut
-    (
-        .clk       (clk),
-        .rst_n     (rst_n),
-        .start     (start),
-        .addr      (addr),
-        .data      (data),
-        .scl       (scl),
-        .sda       (sda),
-        .busy      (busy),
-        .ack_error (ack_error)
+    I2C_protocol #(
+        .CLK_DIV(50)
+    )
+    master (
+        .clk(clk),
+        .rst_n(rst_n),
+        .start(start),
+        .addr(addr),
+        .data(data),
+        .scl(scl),
+        .sda(sda),
+        .busy(busy),
+        .ack_error(ack_error)
     );
 
 
     //========================================================
-    // 100 MHz clock
+    // SIMPLE SLAVE
     //========================================================
-    always #5 clk = ~clk;
+
+    reg slave_sda_drive;
+
+    reg [7:0] slave_shift;
+
+    reg [3:0] slave_bit_count;
+
+    reg [7:0] received_data;
+
+    reg [6:0] received_addr;
+
+    reg slave_ack_phase;
+
+
+    // Slave drives LOW when ACK is required
+    assign sda = slave_sda_drive ? 1'b0 : 1'bz;
 
 
     //========================================================
-    // Test
+    // SLAVE INITIALIZATION
     //========================================================
+
     initial
     begin
 
-        clk       = 1'b0;
-        rst_n     = 1'b0;
-        start     = 1'b0;
+        slave_sda_drive = 1'b0;
 
-        addr      = 7'b1010000;
-        data      = 8'b10101010;
+        slave_shift = 8'd0;
 
-        slave_ack = 1'b0;
+        slave_bit_count = 4'd0;
 
+        received_data = 8'd0;
 
-        //====================================================
-        // RESET
-        //====================================================
-        #20;
+        received_addr = 7'd0;
 
-        rst_n = 1'b1;
+        slave_ack_phase = 1'b0;
+
+    end
 
 
-        //====================================================
-        // START TRANSACTION
-        //====================================================
-        #20;
+    //========================================================
+    // SLAVE RECEIVES DATA
+    //
+    // SDA is sampled on SCL rising edge
+    //========================================================
 
-        start = 1'b1;
+    always @(posedge scl)
+    begin
 
-        #10;
+        if (rst_n)
+        begin
+
+            slave_shift[slave_bit_count] <= sda;
+
+            slave_bit_count <= slave_bit_count + 1'b1;
+
+        end
+
+    end
+
+
+    //========================================================
+    // SLAVE ACK CONTROL
+    //
+    // ACK is driven LOW during the ACK clock
+    //========================================================
+
+    always @(negedge scl)
+    begin
+
+        if (rst_n)
+        begin
+
+            if (slave_bit_count == 8)
+            begin
+
+                // First byte = address + R/W
+                if (!slave_ack_phase)
+                begin
+
+                    received_addr <= slave_shift[7:1];
+
+                    if ((slave_shift[7:1] == 7'h50) &&
+                        (slave_shift[0] == 1'b0))
+                    begin
+
+                        // ACK address
+                        slave_sda_drive <= 1'b1;
+
+                    end
+
+                    else
+                    begin
+
+                        // NACK wrong address
+                        slave_sda_drive <= 1'b0;
+
+                    end
+
+                    slave_ack_phase <= 1'b1;
+
+                end
+
+                // Second byte = DATA
+                else
+                begin
+
+                    received_data <= slave_shift;
+
+                    // ACK data
+                    slave_sda_drive <= 1'b1;
+
+                end
+
+                slave_bit_count <= 4'd0;
+
+            end
+
+            else
+            begin
+
+                // Release SDA after ACK
+                slave_sda_drive <= 1'b0;
+
+            end
+
+        end
+
+    end
+
+
+    //========================================================
+    // CLOCK GENERATION
+    //========================================================
+
+    initial
+    begin
+
+        clk = 1'b0;
+
+        forever #5 clk = ~clk;
+
+    end
+
+
+    //========================================================
+    // TEST SEQUENCE
+    //========================================================
+
+    initial
+    begin
+
+        rst_n = 1'b0;
 
         start = 1'b0;
 
+        addr = 7'h50;
 
-        //====================================================
-        // Wait until address ACK
-        //====================================================
-        @(posedge scl);
+        data = 8'hA5;
 
-        // Wait until master releases SDA
-        wait (uut.state == uut.ACK1_HIGH);
+        #100;
 
-        slave_ack = 1'b1;
+        rst_n = 1'b1;
 
-        // Keep ACK active for complete ACK clock
-        @(negedge scl);
+        #100;
 
-        slave_ack = 1'b0;
-
-
-        //====================================================
-        // Wait until DATA ACK
-        //====================================================
-        wait (uut.state == uut.ACK2_HIGH);
-
-        slave_ack = 1'b1;
-
-        @(negedge scl);
-
-        slave_ack = 1'b0;
-
-
-        //====================================================
-        // Wait for STOP
-        //====================================================
-        wait (uut.state == uut.IDLE);
+        // Start I2C transaction
+        start = 1'b1;
 
         #20;
+
+        start = 1'b0;
+
+        // Wait for transaction
+        wait(busy == 1'b1);
+
+        wait(busy == 1'b0);
+
+        #100;
+
+        $display("--------------------------------------");
+        $display("I2C TRANSACTION FINISHED");
+        $display("Slave Address = %h", received_addr);
+        $display("Received Data  = %h", received_data);
+        $display("ACK Error      = %b", ack_error);
+        $display("--------------------------------------");
+
+        #100;
 
         $finish;
 
@@ -124,31 +259,15 @@ module tb_I2C_protocol;
 
 
     //========================================================
-    // VCD
+    // WAVEFORM
     //========================================================
+
     initial
     begin
-        $dumpfile("i2c_write.vcd");
+
+        $dumpfile("i2c.vcd");
+
         $dumpvars(0, tb_I2C_protocol);
-    end
-
-
-    //========================================================
-    // Monitor
-    //========================================================
-    initial
-    begin
-
-        $monitor(
-            "Time=%0t | START=%b | SCL=%b | SDA=%b | BUSY=%b | ACK_ERROR=%b | STATE=%0d",
-            $time,
-            start,
-            scl,
-            sda,
-            busy,
-            ack_error,
-            uut.state
-        );
 
     end
 

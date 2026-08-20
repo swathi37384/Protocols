@@ -265,7 +265,7 @@ module tb_I2C_protocol;
     initial
     begin
 
-        $dumpfile("i2c.vcd");
+        $dumpfile("i2.vcd");
 
         $dumpvars(0, tb_I2C_protocol);
 

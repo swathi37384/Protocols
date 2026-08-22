@@ -19,26 +19,21 @@ module i2c_write (
     reg [7:0] pointer_reg;
     reg [7:0] addr_reg;
     reg [3:0] bit_count;
+    reg scl_phase;
 
-    parameter IDLE = 5'd0;
-    parameter START = 5'd1;
-    parameter ADDR_LOW = 5'd2;
-    parameter ADDR_HIGH = 5'd3;
-    parameter ADDR_ACK_LOW = 5'd4;
-    parameter ADDR_ACK_HIGH = 5'd5;
-    parameter POINTER_LOW = 5'd6;
-    parameter POINTER_HIGH = 5'd7;
-    parameter POINTER_ACK_LOW = 5'd8;
-    parameter POINTER_ACK_HIGH = 5'd9;
-    parameter DATA_LOW = 5'd10;
-    parameter DATA_HIGH = 5'd11;
-    parameter DATA_ACK_LOW = 5'd12;
-    parameter DATA_ACK_HIGH = 5'd13;
-    parameter STOP_LOW = 5'd14;
-    parameter STOP_HIGH = 5'd15;
 
-    reg [4:0] state;
-    reg [4:0] next_state;
+    parameter IDLE = 4'd0;
+    parameter START = 4'd1;
+    parameter SLAVE_ADDR= 4'd2;
+    parameter SLAVE_ACK = 4'd3;
+    parameter POINTER_ADDR= 4'd4;
+    parameter POINTER_ACK = 4'd5;
+    parameter DATA = 4'd6;
+    parameter DATA_ACK = 4'd7;
+    parameter STOP = 4'd18;
+
+    reg [3:0] state;
+    reg [3:0] next_state;
 
     always @(posedge clk_50mhz or posedge reset)
     begin
@@ -70,6 +65,7 @@ module i2c_write (
             pointer_reg <= 8'd0;
             data_reg <= 8'd0;
             bit_count <= 4'd7;
+	    scl_phase <= 1'b0;
             busy <= 1'b0;
             done <= 1'b0;
         end
@@ -77,43 +73,130 @@ module i2c_write (
             if (timing_tick) begin
 
                 state <= next_state;
-
-                if ((state == IDLE) && start) begin
+		case(state)
+                 IDLE: begin
+		  scl_phase<=1'b0'
+		  if(start) begin
                     addr_reg <= {slave_addr,1'b0};
                     pointer_reg <= pointer_addr;
                     data_reg <= data_in;
                     bit_count <= 4'd7;
                     busy <= 1'b1;
                     done <= 1'b0;
+		end
                 end
+		START:begin	
+			scl_phase<=1'b0;
+			bit_count<=4'd7;
+		end
 
-                else if (state == ADDR_HIGH) begin
+                SLAVE_ADDR: begin
+		  if(scl_phase==1'b0)begin
+			scl_phase<=1'b1;
+		  end
+		else begin
+		    scl_phase<=1'b0;
                     if (bit_count != 0)
                         bit_count <= bit_count - 1'b1;
                     else
                         bit_count <= 4'd7;
                 end
+		end
+		
+		SLAVE_ACK:begin
+		  if(scl_phase==1'b0)begin
+			scl_phase<=1'b1;
+		  end
+		else begin
+		    scl_phase<=1'b0;
+		end
+		end
 
-                else if (state == POINTER_HIGH) begin
-                    if (bit_count != 0)
-                        bit_count <= bit_count - 1'b1;
+                POINTER_ADDR: begin
+                    if (scl_phase == 1'b0)
+                    begin
+                        scl_phase <= 1'b1;
+                    end
+
                     else
-                        bit_count <= 4'd7;
+                    begin
+                        scl_phase <= 1'b0;
+
+                        if (bit_count != 0)
+                            bit_count <= bit_count - 1'b1;
+                        else
+                            bit_count <= 4'd7;
+                    end
                 end
 
-                else if (state == DATA_HIGH) begin
-                    if (bit_count != 0)
-                        bit_count <= bit_count - 1'b1;
+		POINTER_ACK:
+                begin
+                    if (scl_phase == 1'b0)
+                    begin
+                        scl_phase <= 1'b1;
+                    end
                     else
-                        bit_count <= 4'd7;
+                    begin
+                        scl_phase <= 1'b0;
+                    end
                 end
 
-                else if (state == STOP_HIGH) begin
-                    busy <= 1'b0;
-                    done <= 1'b1;
+                 DATA:
+                begin
+                    if (scl_phase == 1'b0)
+                    begin
+                        scl_phase <= 1'b1;
+                    end
+
+                    else
+                    begin
+                        scl_phase <= 1'b0;
+
+                        if (bit_count != 0)
+                            bit_count <= bit_count - 1'b1;
+                        else
+                            bit_count <= 4'd7;
+                    end
                 end
-            end
+		      DATA_ACK:
+                begin
+                    if (scl_phase == 1'b0)
+                    begin
+                        scl_phase <= 1'b1;
+                    end
+                    else
+                    begin
+                        scl_phase <= 1'b0;
+                    end
+                end
+
+                  STOP:
+                begin
+                    if (scl_phase == 1'b0)
+                    begin
+                        
+                        scl_phase <= 1'b1;
+                    end
+
+                    else
+                    begin
+                       
+                        scl_phase <= 1'b0;
+
+                        busy <= 1'b0;
+                        done <= 1'b1;
+                    end
+                end
+		 default:
+                begin
+                    scl_phase <= 1'b0;
+                    busy      <= 1'b0;
+                    done      <= 1'b0;
+                end
+
+            endcase
         end
+	end
     end
 
     always @(*)
@@ -132,93 +215,85 @@ module i2c_write (
 
             START:
             begin
-                next_state = ADDR_LOW;
+                next_state = SLAVE_ADDR;
             end
 
-            ADDR_LOW:
+            SLAVE_ADDR:
             begin
-                next_state = ADDR_HIGH;
+		if((scl_phase==1'b1)&&(bit_count==4'd0)) begin
+			next_state=SLAVE_ACK;
+		end
+		else begin
+                next_state = SLAVE_ADDR;
+		end
             end
 
-            ADDR_HIGH:
+            SLAVE_ACK:
             begin
-                if (bit_count == 4'd0)
-                    next_state = ADDR_ACK_LOW;
+		if(scl_phase==1'b1)begin
+		if(sda==1'b0)
+			next_state=POINTER_ADDR;
+		else
+                       next_state = STOP;
+		end
+		else begin
+			next_state=SLAVE_ACK;
+            		end
+	    end
+	POINTER_ADDR:begin
+                 if ((scl_phase == 1'b1) &&(bit_count == 4'd0))
+                begin
+                    next_state = POINTER_ACK;
+                end
                 else
-                    next_state = ADDR_LOW;
+                begin
+                    next_state = POINTER_ADDR;
+                end
             end
 
-            ADDR_ACK_LOW:
-            begin
-                next_state = ADDR_ACK_HIGH;
-            end
 
-            ADDR_ACK_HIGH:
+          POINTER_ACK:
             begin
-                if (sda == 1'b0)
-                    next_state = POINTER_LOW;
+                if (scl_phase == 1'b1)
+                begin
+                    if (sda == 1'b0)
+                        next_state = DATA;
+                    else
+                        next_state = STOP;
+                end
                 else
-                    next_state = STOP_LOW;
+                begin
+                    next_state = POINTER_ACK;
+                end
             end
 
-            POINTER_LOW:
+            DATA:
             begin
-                next_state = POINTER_HIGH;
-            end
-
-            POINTER_HIGH:
-            begin
-                if (bit_count == 4'd0)
-                    next_state = POINTER_ACK_LOW;
+                if ((scl_phase == 1'b1) &&(bit_count == 4'd0))
+                begin
+                    next_state = DATA_ACK;
+                end
                 else
-                    next_state = POINTER_LOW;
+                begin
+                    next_state = DATA;
+                end
             end
 
-            POINTER_ACK_LOW:
-            begin
-                next_state = POINTER_ACK_HIGH;
-            end
-
-            POINTER_ACK_HIGH:
-            begin
-                if (sda == 1'b0)
-                    next_state = DATA_LOW;
+            DATA_ACK:begin
+                if (scl_phase == 1'b1)
+                    next_state = STOP;
                 else
-                    next_state = STOP_LOW;
+                    next_state = DATA_ACK;
             end
 
-            DATA_LOW:
+            STOP:
             begin
-                next_state = DATA_HIGH;
-            end
-
-            DATA_HIGH:
-            begin
-                if (bit_count == 4'd0)
-                    next_state = DATA_ACK_LOW;
+                if (scl_phase == 1'b1)
+                    next_state = IDLE;
                 else
-                    next_state = DATA_LOW;
+                    next_state = STOP;
             end
 
-            DATA_ACK_LOW:
-            begin
-                next_state = DATA_ACK_HIGH;
-            end
-
-            DATA_ACK_HIGH:
-            begin
-                next_state = STOP_LOW;
-            end
-
-            STOP_LOW:
-            begin
-                next_state = STOP_HIGH;
-            end
-
-            STOP_HIGH:
-            begin
-                next_state = IDLE;
-            end
 
             default:
             begin
@@ -247,116 +322,106 @@ module i2c_write (
                 sda_oe = 1'b1;
             end
 
-            ADDR_LOW:
-            begin
-                scl_oe = 1'b1;
-
-                if (bit_count == 4'd0)
-                    sda_oe = 1'b1;
-                else if (addr_reg[bit_count ] == 1'b0)
-                    sda_oe = 1'b1;
+            SLAVE_ADDR:
+          begin
+                if (scl_phase == 1'b0)
+                    scl_oe = 1'b1;   
                 else
-                    sda_oe = 1'b0;
-            end
+                    scl_oe = 1'b0;   
 
-            ADDR_HIGH:
-            begin
-                scl_oe = 1'b0;
-
-                if (bit_count == 4'd0)
-                    sda_oe = 1'b1;
-                else if (addr_reg[bit_count ] == 1'b0)
-                    sda_oe = 1'b1;
+    
+                if (addr_reg[bit_count] == 1'b0)
+                    sda_oe = 1'b1;   
                 else
-                    sda_oe = 1'b0;
+                    sda_oe = 1'b0;  
+
             end
 
-            ADDR_ACK_LOW:
-            begin
-                scl_oe = 1'b1;
+     
+            ADDR_ACK:
+              begin
+
+                if (scl_phase == 1'b0)
+                    scl_oe = 1'b1;
+                else
+                    scl_oe = 1'b0;
+
+                // Release SDA
                 sda_oe = 1'b0;
+
             end
 
-            ADDR_ACK_HIGH:
+            POINTER_ADDR:
             begin
-                scl_oe = 1'b0;
-                sda_oe = 1'b0;
-            end
 
-            POINTER_LOW:
-            begin
-                scl_oe = 1'b1;
+                if (scl_phase == 1'b0)
+                    scl_oe = 1'b1;
+                else
+                    scl_oe = 1'b0;
 
                 if (pointer_reg[bit_count] == 1'b0)
                     sda_oe = 1'b1;
                 else
                     sda_oe = 1'b0;
+
             end
 
-            POINTER_HIGH:
-            begin
-                scl_oe = 1'b0;
+            POINTER_ACK:
+             begin
 
-                if (pointer_reg[bit_count] == 1'b0)
-                    sda_oe = 1'b1;
+                if (scl_phase == 1'b0)
+                    scl_oe = 1'b1;
                 else
-                    sda_oe = 1'b0;
-            end
+                    scl_oe = 1'b0;
 
-            POINTER_ACK_LOW:
-            begin
-                scl_oe = 1'b1;
+                // Release SDA
                 sda_oe = 1'b0;
+
             end
 
-            POINTER_ACK_HIGH:
+            DATA:
             begin
-                scl_oe = 1'b0;
-                sda_oe = 1'b0;
-            end
 
-            DATA_LOW:
-            begin
-                scl_oe = 1'b1;
+                if (scl_phase == 1'b0)
+                    scl_oe = 1'b1;
+                else
+                    scl_oe = 1'b0;
 
                 if (data_reg[bit_count] == 1'b0)
                     sda_oe = 1'b1;
                 else
                     sda_oe = 1'b0;
+
             end
 
-            DATA_HIGH:
-            begin
-                scl_oe = 1'b0;
+            DATA_ACK:
+             begin
 
-                if (data_reg[bit_count] == 1'b0)
-                    sda_oe = 1'b1;
+                if (scl_phase == 1'b0)
+                    scl_oe = 1'b1;
                 else
-                    sda_oe = 1'b0;
-            end
+                    scl_oe = 1'b0;
 
-            DATA_ACK_LOW:
-            begin
-                scl_oe = 1'b1;
+                // Release SDA
                 sda_oe = 1'b0;
+
             end
 
-            DATA_ACK_HIGH:
-            begin
-                scl_oe = 1'b0;
-                sda_oe = 1'b0;
-            end
 
-            STOP_LOW:
-            begin
-                scl_oe = 1'b1;
-                sda_oe = 1'b1;
-            end
+            STOP:
+		 begin
 
-            STOP_HIGH:
-            begin
-                scl_oe = 1'b0;
-                sda_oe = 1'b0;
+                if (scl_phase == 1'b0)
+                begin
+                    scl_oe = 1'b1;   // SCL LOW
+                    sda_oe = 1'b1;   // SDA LOW
+                end
+                else
+                begin
+                    scl_oe = 1'b0;   // SCL HIGH
+                    sda_oe = 1'b1;   // SDA still LOW
+                end
+
             end
 
             default:

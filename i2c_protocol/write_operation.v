@@ -30,7 +30,7 @@ module i2c_write (
     parameter POINTER_ACK = 4'd5;
     parameter DATA = 4'd6;
     parameter DATA_ACK = 4'd7;
-    parameter STOP = 4'd18;
+    parameter STOP = 4'd8;
 
     reg [3:0] state;
     reg [3:0] next_state;
@@ -75,7 +75,7 @@ module i2c_write (
                 state <= next_state;
 		case(state)
                  IDLE: begin
-		  scl_phase<=1'b0'
+		  scl_phase<=1'b0;
 		  if(start) begin
                     addr_reg <= {slave_addr,1'b0};
                     pointer_reg <= pointer_addr;
@@ -338,7 +338,7 @@ module i2c_write (
             end
 
      
-            ADDR_ACK:
+            SLAVE_ACK:
               begin
 
                 if (scl_phase == 1'b0)

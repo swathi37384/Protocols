@@ -73,13 +73,13 @@ end
 always @(*) begin
     case (uut.state)
 
-        uut.ADDR_ACK_HIGH:
+        uut.SLAVE_ACK:
             slave_ack = 1'b1;
 
-        uut.POINTER_ACK_HIGH:
+        uut.POINTER_ACK:
             slave_ack = 1'b1;
 
-        uut.DATA_ACK_HIGH:
+        uut.DATA_ACK:
             slave_ack = 1'b1;
 
         default:
@@ -102,8 +102,8 @@ initial begin
 end
 
 initial begin
-    $dumpfile("i2c_write.vcd");
-    $dumpvars(0, i2c_write_tb);
+    $dumpfile("i2c.vcd");
+    $dumpvars;
 end
 
 endmodule

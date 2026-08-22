@@ -1,7 +1,7 @@
 module i2c_write (
     input clk_50mhz,
     input reset,
-    input start,
+    input start,more_data,
     input [6:0] slave_addr,
     input [7:0] pointer_addr,
     input [7:0] data_in,
@@ -20,6 +20,7 @@ module i2c_write (
     reg [7:0] addr_reg;
     reg [3:0] bit_count;
     reg scl_phase;
+    reg has_pointer;
 
 
     parameter IDLE = 4'd0;
@@ -30,7 +31,8 @@ module i2c_write (
     parameter POINTER_ACK = 4'd5;
     parameter DATA = 4'd6;
     parameter DATA_ACK = 4'd7;
-    parameter STOP = 4'd8;
+    parameter REPEATED_START=4'd8;
+    parameter STOP = 4'd9;
 
     reg [3:0] state;
     reg [3:0] next_state;
@@ -167,8 +169,22 @@ module i2c_write (
                     else
                     begin
                         scl_phase <= 1'b0;
+			if(more_data)begin
+				data_reg <= data_in;
+         		        bit_count <= 4'd7;
+                         end
+
                     end
                 end
+		REPEATED_START:begin
+                    if (scl_phase == 1'b0)
+                        scl_phase <= 1'b1;
+                    
+			else begin
+       			 scl_phase <= 1'b0;
+			bit_count<=4'd7;
+			end
+		end
 
                   STOP:
                 begin
@@ -280,11 +296,21 @@ module i2c_write (
             end
 
             DATA_ACK:begin
-                if (scl_phase == 1'b1)
-                    next_state = STOP;
+                if (scl_phase == 1'b1) begin
+			if(more_data)
+                    		next_state = REPEATED_START;
+			else
+				next_state=STOP;
+		end
                 else
                     next_state = DATA_ACK;
             end
+	   REPEATED_START:begin
+  		  if (scl_phase == 1'b1)
+        		next_state = SLAVE_ADDR;
+    		  else
+        		next_state = REPEATED_START;
+	   end
 
             STOP:
             begin
@@ -406,6 +432,19 @@ module i2c_write (
                 sda_oe = 1'b0;
 
             end
+	REPEATED_START:
+           begin
+    	 if (scl_phase == 1'b0)
+   	 begin
+        	scl_oe = 1'b1;   // SCL LOW
+        	sda_oe = 1'b0;   // SDA released
+    	end
+    	else
+    	begin
+        	scl_oe = 1'b0;   // SCL HIGH
+       	        sda_oe = 1'b1;   // SDA LOW
+    end
+end
 
 
             STOP:

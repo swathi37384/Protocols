@@ -43,7 +43,7 @@ initial begin
     reset = 1'b1;
     start = 1'b0;
 
-    slave_addr = 7'h50;
+    slave_addr = 7'h57;
     pointer_addr = 8'h20;
     data_in = 8'hA5;
 

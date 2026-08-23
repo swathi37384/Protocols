@@ -58,7 +58,7 @@ initial begin
     start = 1'b1;
     more_data=1'b1;
 
-    #100;
+    #6000;
     start=1'b0;
 
     wait(uut.state==uut.DATA_ACK);
@@ -97,9 +97,12 @@ end
 
 initial begin
     $monitor(
-        "TIME=%0t | STATE=%0d | SCL=%b | SDA=%b | BIT=%0d |MORE_DATA=%b | BUSY=%b | DONE=%b",
+        "TIME=%0t | TICK=%b | START=%b |STATE=%0d |NEXT=%0d | SCL=%b | SDA=%b | BIT=%0d |MORE_DATA=%b | BUSY=%b | DONE=%b",
         $time,
+	uut.timing_tick,
+	start,
         uut.state,
+	uut.next_state,
         scl,
         sda,
         uut.bit_count,

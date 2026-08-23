@@ -61,9 +61,12 @@ initial begin
     #6000;
     start=1'b0;
 
-    wait(uut.state==uut.DATA_ACK);
+
     pointer_addr=8'h30;
     data_in=8'hB6;
+
+    wait(uut.state == uut.REPEATED_START);
+    wait(uut.state == uut.DATA);
     more_data=1'b0;
 
     wait(done == 1'b1);

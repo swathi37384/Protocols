@@ -141,6 +141,96 @@ always@(posedge clk_50mhz or posedge reset)begin
 				end
 			end
 
+			SLAVE_ADDR_R:begin
+                        if (scl_phase == 1'b0)begin
+                            scl_phase <= 1'b1;
+                        end
+                        else begin
+                            scl_phase <= 1'b0;
+
+                            if (bit_count != 0)
+                                bit_count <= bit_count - 1'b1;
+                            else
+                                bit_count <= 4'd7;
+                        end
+            end
+
+			SLAVE_ACK_R:begin
+                        if (scl_phase == 1'b0)
+                            scl_phase <= 1'b1;
+                        else
+                            scl_phase <= 1'b0;
+            end
+
+			 READ_DATA:begin
+                        if (scl_phase == 1'b0)begin
+                        scl_phase <= 1'b1;
+                        end
+                        else begin
+                            read_data_reg[bit_count] <= sda;
+                            scl_phase <= 1'b0;
+                            if (bit_count != 0)
+                            begin
+                                bit_count <= bit_count - 1'b1;
+                            end
+                            else
+                            begin
+                                bit_count <= 4'd7;
+                            end
+                        end
+                    end
+
+
+                    MASTER_NACK:begin
+						if (scl_phase == 1'b0) begin
+                            scl_phase <= 1'b1;
+                        end
+                        else begin
+                            scl_phase <= 1'b0;
+                            data_out <= read_data_reg;
+                        end
+                    end
+
+                    STOP:
+                    begin
+                        if (scl_phase == 1'b0)
+                        begin
+                            scl_phase <= 1'b1;
+                        end
+                        else
+                        begin
+                            scl_phase <= 1'b0;
+                            busy <= 1'b0;
+                        end
+                    end
+
+                    DONE_STATE:
+                    begin
+                        busy <= 1'b0;
+                        done <= 1'b1;
+                    end
+
+
+                    default:
+                    begin
+                        scl_phase <= 1'b0;
+
+                        busy <= 1'b0;
+                        done <= 1'b0;
+                    end
+
+                endcase
+            end
+        end
+    end
+
+
+
+			
+
+			
+
+
 			
 
 

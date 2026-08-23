@@ -3,6 +3,7 @@ module i2c_write_tb;
 reg clk_50mhz;
 reg reset;
 reg start;
+reg more_data;
 
 reg [6:0] slave_addr;
 reg [7:0] pointer_addr;
@@ -20,6 +21,7 @@ i2c_write uut (
     .clk_50mhz(clk_50mhz),
     .reset(reset),
     .start(start),
+    .more_data(more_data),
     .slave_addr(slave_addr),
     .pointer_addr(pointer_addr),
     .data_in(data_in),
@@ -42,9 +44,9 @@ end
 initial begin
     reset = 1'b1;
     start = 1'b0;
-
+    more_data=1'b0;
     slave_addr = 7'h57;
-    pointer_addr = 8'h20;
+    pointer_addr = 8'h2A;
     data_in = 8'hA5;
 
     #100;
@@ -54,14 +56,19 @@ initial begin
     #100;
 
     start = 1'b1;
+    more_data=1'b1;
 
-    #10000;
+    #100;
+    start=1'b0;
 
-    start = 1'b0;
+    wait(uut.state==uut.DATA_ACK);
+    pointer_addr=8'h30;
+    data_in=8'hB6;
+    more_data=1'b0;
 
     wait(done == 1'b1);
 
-    #200;
+    #100;
 
     $display("-----------------------------------------");
     $display("I2C WRITE TRANSACTION COMPLETED");
@@ -90,12 +97,13 @@ end
 
 initial begin
     $monitor(
-        "TIME=%0t | STATE=%0d | SCL=%b | SDA=%b | BIT=%0d | BUSY=%b | DONE=%b",
+        "TIME=%0t | STATE=%0d | SCL=%b | SDA=%b | BIT=%0d |MORE_DATA=%b | BUSY=%b | DONE=%b",
         $time,
         uut.state,
         scl,
         sda,
         uut.bit_count,
+	more_data,
         busy,
         done
     );

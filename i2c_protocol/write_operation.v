@@ -172,6 +172,7 @@ module i2c_write (
 			if(more_data)begin
 				data_reg <= data_in;
          		        bit_count <= 4'd7;
+				pointer_reg<=pointer_addr;
                          end
 
                     end

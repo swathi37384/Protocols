@@ -82,12 +82,12 @@ task slave_receive_byte;
         begin
 
             // SCL HIGH period
-            #2500;
+            #5000;
 
             received_byte[j] = sda;
 
             // SCL LOW period
-            #2500;
+        
 	    #5000;
 
         end
@@ -253,7 +253,7 @@ initial begin
     // Repeated START
     //------------------------------------------------
 
-    #20;
+    #10000;
 
     $display("-----------------------------------------");
     $display("REPEATED START detected");
@@ -291,7 +291,7 @@ initial begin
     // Master NACK
     //------------------------------------------------
 
-    #20;
+    #5000;
 
     if(sda === 1'b1)
         $display("Master sent NACK");
@@ -303,7 +303,7 @@ initial begin
     // STOP
     //------------------------------------------------
 
-    #40;
+    #10000;
 
     $display("-----------------------------------------");
     $display("STOP detected");

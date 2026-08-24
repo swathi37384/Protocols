@@ -182,7 +182,7 @@ always@(posedge clk_50mhz or posedge reset)begin
 
 
                     MASTER_NACK:begin
-						if (scl_phase == 1'b0) begin
+			    if (scl_phase == 1'b0) begin
                             scl_phase <= 1'b1;
                         end
                         else begin
@@ -224,15 +224,243 @@ always@(posedge clk_50mhz or posedge reset)begin
         end
     end
 
+    always@(*) begin
+	next_state=state;
+    case(state)
 
+	    IDLE:begin
+		    if(start)
+			    next_state=START;
+		    else
+			    next_state=IDLE;
+	    end
 
-			
+	    START:begin
+		    next_state=SLAVE_ADDR_W;
+	    end
 
-			
+	    SLAVE_ADDR_W:begin
+		    if((scl_phase==1'b1)&&(bit_count==4'd0))begin
+			    next_state=SLAVE_ACK_W;
+		    end
+		    else begin
+			    next_state=SLAVE_ADDR_W;
+		    end
+	    end
 
+	    SLAVE_ACK_W:begin
+		    if(scl_phase==1'b1)begin
+			    if(sda==1'b0)
+				    next_state=POINTER_ADDR;
+			    else 
+				    next_state=STOP;
+		    end
+		    else begin
+			    next_state=SLAVE_ACK_W;
+		    end
+	    end
 
-			
+	    POINTER_ADDR:begin
+		    if((scl_phase==1'b1)&&(bit_count==4'd0))begin
+			    next_state=POINTER_ACK;
+		    end
+		    else begin
+			    next_state=POINTER_ADDR;
+		    end
+	    end
 
+	    POINTER_ACK:begin
+		    if(scl_phase==1'b1)begin
+			    if(sda==1'b0)
+				    next_state=REPEATED_START;
+			    else
+				    next_state=STOP;
+		    end
+		    else begin
+			    next_state=POINTER_ACK;
+		    end
+	    end
 
+	    REPEATED_START:begin
+		    if(scl_phase==1'b1)
+			    next_state=SLAVE_ADDR_R;
+		    else
+			    next_state=REPEATED_START;
+	    end
 
-	
+	    SLAVE_ADDR_R:begin
+		    if((scl_phase==1'b1)&&(bit_count=4'd0))begin
+			    next_state=SLAVE_ACK_R;
+		    end
+		    else begin
+			    next_state=SLAVE_ADDR_R;
+		    end
+	    end
+
+	    SLAVE_ACK_R:begin
+		    if(scl_phase==1'b1)begin
+			    if(sda==1'b0)
+				    next_state=READ_DATA;
+			    else
+				    next_state=STOP;
+		    end
+		    else begin
+			    next_state=SLAVE_ACK_R;
+		    end
+	    end
+
+	    READ_DATA:begin
+		    if((scl_phase==1'b1)&&(bit_count==4'd0))begin
+			    next_state=MASTER_NACK;
+		    end
+		    else begin
+			    next_state=READ_DATA;
+		    end
+	    end
+
+	    MASTER_NACK:begin
+		    if(scl_phase==1'b1)
+			    next_state=STOP;
+		    else
+			    next_state=MASTER_NACK;
+	    end
+	    
+	    STOP:begin
+		    if(scl_phase==1'b1)
+			    next_state=DONE_STATE;
+		    else 
+			    next_state=STOP;
+	    end
+
+	    DONE_STATE:begin
+		    next_state=IDLE;
+	    end
+
+	    default: begin
+		    next_state=IDLE;
+	    end
+    endcase
+    end
+
+    always@(*) begin
+	    scl_oe=1'b0;
+	    sda_oe=1'b0;
+	    case(state)
+		    IDLE:begin
+			    scl_oe=1'b0;
+			    sda_oe=1'b0;
+		    end
+
+		    START:begin
+			    scl_oe=1'b0;
+			    sda_oe=1'b1;
+		    end
+
+		    SLAVE_ADDR_W:begin
+			    if(scl_phase==1'b0)
+				    scl_oe=1'b1;
+			    else
+				    scl_oe=1'b0;
+			    if(addr_reg[bit_count]==1'b0)
+				    sda_oe=1'b1;
+			    else
+				    sda_oe=1'b0;
+		    end
+
+		    SLAVE_ACK_W:begin
+			    if(scl_phase==1'b0)
+				    scl_oe=1'b1;
+			    else
+				    scl_oe=1'b0;
+			    sda_oe=1'b0;
+		    end
+
+		    POINTER_ADDR:begin
+			    if(scl_phase==1'b0)
+				    scl_oe=1'b1;
+			    else
+				    scl_oe=1'b0;
+			    if(pointer_reg[bit_count]==1'b0)
+				    sda_oe=1'b1;
+			    else
+				    sda_oe=1'b0;
+		    end
+
+		    POINTER_ACK:begin
+			    if(scl_phase==1'b0)
+				    scl_oe=1'b1;
+			    else
+				    scl_oe=1'b0;
+			    sda_oe=1'b0;
+		    end
+
+		    REPEATED_START:begin
+			    if(scl_phase==1'b0)begin
+				    scl_oe=1'b1;
+				    sda_oe=1'b0;
+			    end
+			    else begin
+				    scl_oe=1'b0;
+				    sda_oe=1'b1;
+			    end
+		    end
+
+		    SLAVE_ADDR_R:begin
+			    if(scl_phase==1'b0)
+				    scl_oe=1'b1;
+			    else
+				    scl_oe=1'b0;
+			    if(addr_reg[bit_count]==1'b0)
+				    sda_oe=1'b1;
+			    else
+				    sda_oe=1'b0;
+		    end
+
+		    SLAVE_ACK_R:begin
+			    if(scl_phase==1'b0)
+				    scl_oe=1'b1;
+			    else
+				    scl_oe=1'b0;
+			    sda_oe=1'b0;
+		    end
+
+		    READ_DATA:begin
+			    if(scl_phase==1'b0)
+				    scl_oe=1'b1;
+			    else
+				    scl_oe=1'b0;
+			    sda_oe=1'b0;
+		    end
+
+		    MASTER_NACK:begin
+			    if(scl_phase==1'b0)
+				    scl_oe=1'b1;
+			    else
+				    scl_oe=1'b0;
+			    sda_oe=1'b0;
+		    end
+
+		    STOP:begin
+			    if(scl_phase==1'b0)begin
+				    scl_oe=1'b1;
+				    sda_oe=1'b1;
+			    end
+			    else begin
+				    scl_oe=1'b0;
+				    sda_oe=1'b0;
+			    end
+		    end
+
+		    DONE_STATE:begin
+			    scl_oe=1'b0;
+			    sda_oe=1'b0;
+		    end
+
+		    default:begin
+			    scl_oe=1'b0;
+			    sda_oe=1'b0;
+		    end
+	    endcase
+    end
+    endmodule
+

@@ -82,12 +82,12 @@ task slave_receive_byte;
         begin
 
             // SCL HIGH period
-            #20;
+            #5000;
 
             received_byte[j] = sda;
 
             // SCL LOW period
-            #20;
+            #5000;
 
         end
 
@@ -111,10 +111,10 @@ task slave_ack;
         slave_sda_oe = 1'b1;
 
         // Hold ACK during SCL HIGH
-        #20;
+        #5000;
 
         // SCL goes LOW
-        #20;
+        #5000;
 
         // Release SDA
         slave_sda_oe = 1'b0;

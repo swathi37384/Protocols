@@ -72,6 +72,7 @@ always@(posedge clk_50mhz or posedge reset)begin
 		done<=1'b0;
 	end
 	else begin
+		if(timing_tick)begin
 		state <=next_state;
 		case(state)
 			IDLE: begin
@@ -223,6 +224,7 @@ always@(posedge clk_50mhz or posedge reset)begin
 
                 endcase
             end
+    end
     end
 
     always@(*) begin

@@ -82,12 +82,13 @@ task slave_receive_byte;
         begin
 
             // SCL HIGH period
-            #5000;
+            #2500;
 
             received_byte[j] = sda;
 
             // SCL LOW period
-            #5000;
+            #2500;
+	    #5000;
 
         end
 
@@ -148,10 +149,10 @@ task slave_send_byte;
                 slave_sda_oe = 1'b0;
 
             // SCL HIGH
-            #20;
+            #5000;
 
             // SCL LOW
-            #20;
+            #5000;
 
         end
 
@@ -252,7 +253,7 @@ initial begin
     // Repeated START
     //------------------------------------------------
 
-    #40;
+    #20;
 
     $display("-----------------------------------------");
     $display("REPEATED START detected");

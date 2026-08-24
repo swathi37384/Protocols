@@ -127,8 +127,10 @@ always@(posedge clk_50mhz or posedge reset)begin
 			POINTER_ACK:begin
 				if(scl_phase==1'b0)
 					scl_phase<=1'b1;
-				else
+				else begin
 					scl_phase<=1'b0;
+					addr_reg<={addr_reg[7:1],1'b1};
+				end
 			end
 
 			REPEATED_START:begin

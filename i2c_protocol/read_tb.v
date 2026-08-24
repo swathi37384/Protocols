@@ -23,7 +23,7 @@ pullup(sda);
 
 assign sda = slave_sda_oe ? 1'b0 : 1'bz;
 
-i2c_read uut (
+read uut (
     .clk_50mhz    (clk_50mhz),
     .reset        (reset),
     .start        (start),

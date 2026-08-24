@@ -221,7 +221,6 @@ always@(posedge clk_50mhz or posedge reset)begin
 
                 endcase
             end
-        end
     end
 
     always@(*) begin
@@ -289,7 +288,7 @@ always@(posedge clk_50mhz or posedge reset)begin
 	    end
 
 	    SLAVE_ADDR_R:begin
-		    if((scl_phase==1'b1)&&(bit_count=4'd0))begin
+		    if((scl_phase==1'b1)&&(bit_count==4'd0))begin
 			    next_state=SLAVE_ACK_R;
 		    end
 		    else begin

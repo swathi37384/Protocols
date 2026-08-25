@@ -465,4 +465,4 @@ always@(posedge clk_50mhz or posedge reset)begin
 		    end 
 	    endcase 
     end 
-    endmodule cthis is the code
+    endmodule 

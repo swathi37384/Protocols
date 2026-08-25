@@ -179,7 +179,7 @@ initial begin
 
     start = 1'b1;
 
-    #20;
+    #6000;
 
     start = 1'b0;
 

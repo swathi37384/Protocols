@@ -77,18 +77,18 @@ task slave_receive_byte;
     begin
 
         received_byte = 8'd0;
-
+	#2500;
         for(j = 7; j >= 0; j = j - 1)
         begin
 
             // SCL HIGH period
-            #5000;
+            #2500;
 
             received_byte[j] = sda;
 
             // SCL LOW period
         
-	    #5000;
+	    #7500;
 
         end
 
@@ -208,7 +208,7 @@ initial begin
     // Wait for START
     //------------------------------------------------
 
-    #20;
+    #5000;
 
     $display("-----------------------------------------");
     $display("START detected");

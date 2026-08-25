@@ -1,4 +1,4 @@
-module i2c_write (
+module write (
     input clk_50mhz,
     input reset,
     input start,more_data,

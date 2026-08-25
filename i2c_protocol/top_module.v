@@ -35,7 +35,7 @@ module top_module(
     wire read_scl;
     wire read_sda;
 
-      write_operation u_write (
+      write u_write (
 
         .clk_50mhz   (clk_50mhz),
         .reset       (reset),
@@ -56,7 +56,7 @@ module top_module(
     );
 
 
-    read_operation u_read (
+    read u_read (
 
         .clk_50mhz   (clk_50mhz),
         .reset       (reset),

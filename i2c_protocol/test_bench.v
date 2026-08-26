@@ -40,7 +40,9 @@ end
 
 	reg slave_sda_oe;
 	assign sda=slave_sda_oe?1'b0:1'bz;
-
+    reg [7:0] rx_byte;
+	reg [7:0] slave_data;
+	integer i;
 	initial begin
 		slave_sda_oe=1'b0;
 		rx_byte = 8'h00;
@@ -48,9 +50,6 @@ end
 
 	end
 
-	reg [7:0] rx_byte;
-	reg [7:0] slave_data;
-	integer i;
 	task receive_byte;
 		begin
 			for(i=7;i>=0;i=i-1)begin
@@ -80,7 +79,7 @@ begin
 			slave_sda_oe=1'b1;
 		else
 			slave_sda_oe=1'b0;
-		#100;
+		wait(scl==1'b1);
 	end
 
     wait(scl == 1'b0);
@@ -88,31 +87,120 @@ begin
 end
 endtask
 
-	initial begin
-	/* WRITE */
-wait(scl == 1'b1);
-wait(sda == 1'b0);       // START
+initial begin
 
-receive_byte;
-ack;
+    //------------------------------------------------
+    // WAIT FOR FIRST START
+    //------------------------------------------------
 
-receive_byte;
-ack;
+    wait(scl == 1'b1);
+    wait(sda == 1'b0);
 
-receive_byte;
-ack;
+    $display("----------------------------------------");
+    $display("SLAVE: START DETECTED");
+    $display("----------------------------------------");
 
 
-/* REPEATED START */
-wait(scl == 1'b1);
-wait(sda == 1'b0);
+    //------------------------------------------------
+    // WRITE OPERATION
+    //------------------------------------------------
 
-receive_byte;
-ack;
+    // Receive Slave Address + Write
+    receive_byte;
 
-slave_data = 8'hB6;
-send_byte;
-	end
+    $display("SLAVE: ADDRESS + W = %h", rx_byte);
+
+    ack;
+
+
+    // Receive Pointer Address
+    receive_byte;
+
+    $display("SLAVE: POINTER = %h", rx_byte);
+
+    ack;
+
+
+    // Receive Write Data
+    receive_byte;
+
+    $display("SLAVE: WRITE DATA = %h", rx_byte);
+
+    if(rx_byte == 8'hB6)
+        $display("SLAVE: WRITE DATA CORRECT");
+    else
+        $display("SLAVE: WRITE DATA WRONG");
+
+    ack;
+
+
+    //------------------------------------------------
+    // WAIT FOR STOP
+    //------------------------------------------------
+
+    wait(scl == 1'b1);
+    wait(sda == 1'b1);
+
+    $display("----------------------------------------");
+    $display("SLAVE: WRITE TRANSACTION COMPLETE");
+    $display("----------------------------------------");
+
+
+    //------------------------------------------------
+    // WAIT FOR READ START
+    //------------------------------------------------
+
+    wait(scl == 1'b1);
+    wait(sda == 1'b0);
+
+    $display("----------------------------------------");
+    $display("SLAVE: READ START DETECTED");
+    $display("----------------------------------------");
+
+
+    //------------------------------------------------
+    // RECEIVE SLAVE ADDRESS + READ
+    //------------------------------------------------
+
+    receive_byte;
+
+    $display("SLAVE: ADDRESS + R = %h", rx_byte);
+
+    ack;
+
+
+    //------------------------------------------------
+    // SEND DATA TO MASTER
+    //------------------------------------------------
+
+    slave_data = 8'hB6;
+
+    $display("SLAVE: SENDING DATA = %h", slave_data);
+
+    send_byte;
+
+
+    //------------------------------------------------
+    // MASTER ACK/NACK
+    //------------------------------------------------
+
+    wait(scl == 1'b1);
+
+    if(sda == 1'b0)
+        $display("SLAVE: MASTER ACK");
+    else
+        $display("SLAVE: MASTER NACK");
+
+    wait(scl == 1'b0);
+
+    slave_sda_oe = 1'b0;
+
+
+    $display("----------------------------------------");
+    $display("SLAVE: READ TRANSACTION COMPLETE");
+    $display("----------------------------------------");
+
+end
 
 	
 initial begin

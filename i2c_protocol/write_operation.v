@@ -459,7 +459,7 @@ end
                 else
                 begin
                     scl_oe = 1'b0;   // SCL HIGH
-                    sda_oe = 1'b1;   // SDA still LOW
+                    sda_oe = 1'b0;   // SDA still LOW
                 end
 
             end

@@ -76,10 +76,12 @@ end
 begin
     for(i=7; i>=0; i=i-1) begin
         wait(scl == 1'b0);
-        slave_sda_oe = ~slave_data[i];
-
-        wait(scl == 1'b1);
-    end
+		if(slave_data[i]==1'b0)
+			slave_sda_oe=1'b1;
+		else
+			slave_sda_oe=1'b0;
+		#100;
+	end
 
     wait(scl == 1'b0);
     slave_sda_oe = 1'b0;
@@ -93,17 +95,6 @@ wait(sda == 1'b0);       // START
 
 receive_byte;
 ack;
-
-receive_byte;
-ack;
-
-receive_byte;
-ack;
-
-
-/* READ pointer phase */
-wait(scl == 1'b1);
-wait(sda == 1'b0);       // START
 
 receive_byte;
 ack;

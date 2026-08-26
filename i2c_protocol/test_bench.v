@@ -38,6 +38,10 @@ initial begin
 	forever #10 clk_50mhz=~clk_50mhz;
 end
 
+	reg slave_sda_oe;
+	assign sda=slave_sda_oe?1'b0:1'bz;
+
+	
 initial begin
 	$dumpfile("i2c_top.vcd");
 	$dumpvars;
@@ -61,11 +65,9 @@ initial begin
 	pointer_addr=8'h30;
 	data_in=8'hB6;
 	start=1'b1;
-
-	#20;
+	wait(busy==1'b1);
 	start=1'b0;
 	wait(done==1'b1);
-
 	$display("WRITE DONE");
 	#100;
 
@@ -74,9 +76,9 @@ initial begin
 	slave_addr=7'h50;
 	pointer_addr=8'h30;
 	start=1'b1;
-	#20;
-	start=1'b0;
 
+	wait(busy==1'b1);
+	start=1'b0;
 	wait(done==1'b1);
 	$display("READ DATA");
 	$display("DATA READ=%h",data_out);

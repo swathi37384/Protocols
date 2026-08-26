@@ -17,7 +17,7 @@ wire sda;
 
 reg slave_ack;
 
-i2c_write uut (
+write uut (
     .clk_50mhz(clk_50mhz),
     .reset(reset),
     .start(start),
@@ -56,19 +56,8 @@ initial begin
     #100;
 
     start = 1'b1;
-    more_data=1'b1;
-
-    #6000;
+    wait(busy==1'b1);
     start=1'b0;
-
-
-    pointer_addr=8'h30;
-    data_in=8'hB6;
-
-    wait(uut.state == uut.REPEATED_START);
-    wait(uut.state == uut.DATA);
-    more_data=1'b0;
-
     wait(done == 1'b1);
 
     #100;

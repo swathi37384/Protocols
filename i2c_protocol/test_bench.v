@@ -41,6 +41,87 @@ end
 	reg slave_sda_oe;
 	assign sda=slave_sda_oe?1'b0:1'bz;
 
+	initial begin
+		slave_sda_oe=1'b0;
+		rx_byte = 8'h00;
+    slave_data = 8'hB6;
+
+	end
+
+	reg [7:0] rx_byte;
+	reg [7:0] slave_data;
+	integer i;
+	task receive_byte;
+		begin
+			for(i=7;i>=0;i=i-1)begin
+				wait(scl==1'b1);
+				rx_byte[i]=sda;
+				wait(scl==1'b0);
+			end
+		end
+	endtask
+
+	task ack;
+		begin
+			slave_sda_oe=1'b1;
+			wait(scl==1'b1);
+			wait(scl==1'b0);
+			slave_sda_oe=1'b0;
+		end
+	endtask
+
+	task send_byte;
+begin
+    for(i=7; i>=0; i=i-1) begin
+        wait(scl == 1'b0);
+		#10;
+        slave_sda_oe = ~slave_data[i];
+
+        wait(scl == 1'b1);
+    end
+
+    wait(scl == 1'b0);
+    slave_sda_oe = 1'b0;
+end
+endtask
+
+	initial begin
+	/* WRITE */
+wait(scl == 1'b1);
+wait(sda == 1'b0);       // START
+
+receive_byte;
+ack;
+
+receive_byte;
+ack;
+
+receive_byte;
+ack;
+
+
+/* READ pointer phase */
+wait(scl == 1'b1);
+wait(sda == 1'b0);       // START
+
+receive_byte;
+ack;
+
+receive_byte;
+ack;
+
+
+/* REPEATED START */
+wait(scl == 1'b1);
+wait(sda == 1'b0);
+
+receive_byte;
+ack;
+
+slave_data = 8'hB6;
+send_byte;
+	end
+
 	
 initial begin
 	$dumpfile("i2c_top.vcd");
@@ -69,7 +150,7 @@ initial begin
 	start=1'b0;
 	wait(done==1'b1);
 	$display("WRITE DONE");
-	#100;
+	#1000;
 
 	$display("START READ");
 	rw=1'b1;
@@ -94,8 +175,11 @@ initial begin
 	#1000;
 	$finish;
 	end
-	always@(posedge scl or negedge scl)begin
+	initial begin
+		forever begin
+			#1000;
 		$display("time=%0t | SCL=%b |SDA=%b |RW=%b |START =%b |BUSY =%b |DONE =%b |DATA=%h",$time,scl,sda,rw,start,busy,done,data_out);
+	end
 	end
 	endmodule
 

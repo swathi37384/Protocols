@@ -54,10 +54,12 @@ end
 	task receive_byte;
 		begin
 			for(i=7;i>=0;i=i-1)begin
+				wait(scl==1'b0);
 				wait(scl==1'b1);
 				rx_byte[i]=sda;
-				wait(scl==1'b0);
 			end
+				wait(scl==1'b0);
+			
 		end
 	endtask
 
@@ -74,7 +76,6 @@ end
 begin
     for(i=7; i>=0; i=i-1) begin
         wait(scl == 1'b0);
-		#10;
         slave_sda_oe = ~slave_data[i];
 
         wait(scl == 1'b1);

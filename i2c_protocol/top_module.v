@@ -35,12 +35,17 @@ module top_module(
     wire read_scl;
     wire read_sda;
 
+    wire write_start;
+   wire read_start;
+  assign write_start=start && !rw;
+ assign read_start=start && rw; 
+
       write u_write (
 
         .clk_50mhz   (clk_50mhz),
         .reset       (reset),
 
-        .start       (start && !rw),
+        .start       (write_start),
         .more_data   (more_data),
 
         .slave_addr  (slave_addr),
@@ -61,7 +66,7 @@ module top_module(
         .clk_50mhz   (clk_50mhz),
         .reset       (reset),
 
-        .start       (start && rw),
+        .start       (read_start),
 
         .slave_addr  (slave_addr),
         .pointer_addr(pointer_addr),

@@ -179,7 +179,6 @@ endtask
 //==================================================
 // SLAVE PROCESS
 //==================================================
-
 initial begin
 
     //------------------------------------------------
@@ -196,18 +195,18 @@ initial begin
 
 
     //------------------------------------------------
-    // RECEIVE ADDRESS + WRITE
+    // WRITE: ADDRESS + W
     //------------------------------------------------
 
     receive_byte;
 
-    $display("SLAVE: ADDRESS + W = %h", rx_byte);
+    $display("SLAVE: WRITE ADDRESS = %h", rx_byte);
 
     ack;
 
 
     //------------------------------------------------
-    // RECEIVE POINTER
+    // WRITE: POINTER
     //------------------------------------------------
 
     receive_byte;
@@ -218,7 +217,7 @@ initial begin
 
 
     //------------------------------------------------
-    // RECEIVE WRITE DATA
+    // WRITE: DATA
     //------------------------------------------------
 
     receive_byte;
@@ -247,7 +246,7 @@ initial begin
 
 
     //------------------------------------------------
-    // WAIT FOR READ START / REPEATED START
+    // WAIT FOR READ START
     //------------------------------------------------
 
     wait(scl == 1'b1);
@@ -255,34 +254,69 @@ initial begin
 
     $display("");
     $display("==========================================");
-    $display("SLAVE: READ / REPEATED START DETECTED");
+    $display("SLAVE: READ START DETECTED");
     $display("==========================================");
 
 
     //------------------------------------------------
-    // RECEIVE ADDRESS + READ
+    // READ: ADDRESS + W
     //------------------------------------------------
 
     receive_byte;
 
-    $display("SLAVE: ADDRESS + R = %h", rx_byte);
+    $display("SLAVE: READ - ADDRESS + W = %h", rx_byte);
 
     ack;
 
 
     //------------------------------------------------
-    // SEND READ DATA
+    // READ: POINTER
+    //------------------------------------------------
+
+    receive_byte;
+
+    $display("SLAVE: READ - POINTER = %h", rx_byte);
+
+    ack;
+
+
+    //------------------------------------------------
+    // WAIT FOR REPEATED START
+    //------------------------------------------------
+
+    wait(scl == 1'b1);
+    wait(sda == 1'b0);
+
+    $display("");
+    $display("==========================================");
+    $display("SLAVE: REPEATED START DETECTED");
+    $display("==========================================");
+
+
+    //------------------------------------------------
+    // READ: ADDRESS + R
+    //------------------------------------------------
+
+    receive_byte;
+
+    $display("SLAVE: READ - ADDRESS + R = %h", rx_byte);
+
+    ack;
+
+
+    //------------------------------------------------
+    // SLAVE SENDS DATA
     //------------------------------------------------
 
     slave_data = 8'hB6;
 
-    $display("SLAVE: SEND DATA = %h", slave_data);
+    $display("SLAVE: SENDING DATA = %h", slave_data);
 
     send_byte;
 
 
     //------------------------------------------------
-    // CHECK MASTER ACK/NACK
+    // MASTER NACK
     //------------------------------------------------
 
     wait(scl == 1'b1);
@@ -296,9 +330,13 @@ initial begin
 
     slave_sda_oe = 1'b0;
 
+
+    $display("");
+    $display("==========================================");
+    $display("SLAVE: READ COMPLETE");
+    $display("==========================================");
+
 end
-
-
 //==================================================
 // MASTER TEST
 //==================================================

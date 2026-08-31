@@ -1,133 +1,446 @@
 `timescale 1ns/1ps
 
-module write(
+module write (
     input        clk_50mhz,
     input        reset,
     input        start,
     input        more_data,
-    input  [6:0] slave_addr,
-    input  [7:0] pointer_addr,
-    input  [7:0] data_in,
+    input  [6:0]  slave_addr,
+    input  [7:0]  pointer_addr,
+    input  [7:0]  data_in,
     output reg   busy,
     output reg   done,
     inout        scl,
     inout        sda
 );
 
-localparam IDLE          = 4'd0;
-localparam START         = 4'd1;
-localparam SLAVE_ADDR    = 4'd2;
-localparam SLAVE_ACK     = 4'd3;
-localparam POINTER_ADDR   = 4'd4;
-localparam POINTER_ACK    = 4'd5;
-localparam DATA           = 4'd6;
-localparam DATA_ACK       = 4'd7;
-localparam STOP           = 4'd8;
+    reg [7:0] clk_count;
+    reg       timing_tick;
 
-reg [3:0] state;
+    reg       sda_oe;
+    reg       scl_oe;
 
-reg [6:0] addr_reg;
-reg [7:0] pointer_reg;
-reg [7:0] data_reg;
+    reg [7:0] data_reg;
+    reg [7:0] pointer_reg;
+    reg [7:0] addr_reg;
 
-reg [3:0] bit_count;
+    reg [3:0] bit_count;
 
-reg [7:0] clk_count;
-reg [2:0] phase_count;
-reg       scl_phase;
+    reg       scl_phase;
 
-reg       sda_delay_done;
+    // SDA setup delay flag
+    reg       sda_setup_done;
 
-reg       scl_oe;
-reg       sda_oe;
+    parameter IDLE           = 4'd0;
+    parameter START          = 4'd1;
+    parameter SLAVE_ADDR     = 4'd2;
+    parameter SLAVE_ACK      = 4'd3;
+    parameter POINTER_ADDR   = 4'd4;
+    parameter POINTER_ACK    = 4'd5;
+    parameter DATA           = 4'd6;
+    parameter DATA_ACK       = 4'd7;
+    parameter REPEATED_START = 4'd8;
+    parameter STOP           = 4'd9;
 
-assign scl = scl_oe ? 1'b0 : 1'bz;
-assign sda = sda_oe ? 1'b0 : 1'bz;
+    reg [3:0] state;
+    reg [3:0] next_state;
 
-always @(posedge clk_50mhz or posedge reset) begin
 
-    if (reset) begin
-        clk_count <= 8'd0;
-    end
-    else begin
-        if (clk_count == 8'd49)
-            clk_count <= 8'd0;
-        else
-            clk_count <= clk_count + 1'b1;
-    end
+    //========================================================
+    // 50 MHz CLOCK DIVIDER
+    // 50 MHz = 20 ns
+    // 250 clocks = 5 us
+    //========================================================
 
-end
+    always @(posedge clk_50mhz or posedge reset)
+    begin
+        if (reset) begin
+            clk_count   <= 8'd0;
+            timing_tick <= 1'b0;
+        end
+        else begin
 
-wire timing_tick = (clk_count == 8'd49);
+            timing_tick <= 1'b0;
 
-always @(posedge clk_50mhz or posedge reset) begin
+            if (clk_count == 8'd249) begin
+                clk_count   <= 8'd0;
+                timing_tick <= 1'b1;
+            end
+            else begin
+                clk_count <= clk_count + 1'b1;
+            end
 
-    if (reset) begin
-
-        state           <= IDLE;
-        busy            <= 1'b0;
-        done            <= 1'b0;
-
-        addr_reg        <= 7'd0;
-        pointer_reg     <= 8'd0;
-        data_reg        <= 8'd0;
-
-        bit_count       <= 4'd7;
-
-        phase_count     <= 3'd0;
-        scl_phase       <= 1'b0;
-        sda_delay_done  <= 1'b0;
-
+        end
     end
 
-    else if (timing_tick) begin
+
+    //========================================================
+    // OPEN DRAIN I2C
+    //========================================================
+
+    assign scl = scl_oe ? 1'b0 : 1'bz;
+    assign sda = sda_oe ? 1'b0 : 1'bz;
+
+
+    //========================================================
+    // STATE REGISTER + DATA PATH
+    //========================================================
+
+    always @(posedge clk_50mhz or posedge reset)
+    begin
+
+        if (reset) begin
+
+            state          <= IDLE;
+
+            addr_reg       <= 8'd0;
+            pointer_reg    <= 8'd0;
+            data_reg       <= 8'd0;
+
+            bit_count      <= 4'd7;
+
+            scl_phase      <= 1'b0;
+
+            sda_setup_done <= 1'b0;
+
+            busy           <= 1'b0;
+            done           <= 1'b0;
+
+        end
+
+        else begin
+
+            if (timing_tick) begin
+
+                // State changes according to next_state
+                state <= next_state;
+
+                case (state)
+
+                    //================================================
+                    // IDLE
+                    //================================================
+
+                    IDLE:
+                    begin
+
+                        scl_phase      <= 1'b0;
+                        sda_setup_done <= 1'b0;
+
+                        busy <= 1'b0;
+                        done <= 1'b0;
+
+                        if (start) begin
+
+                            addr_reg    <= {slave_addr,1'b0};
+                            pointer_reg <= pointer_addr;
+                            data_reg    <= data_in;
+
+                            bit_count <= 4'd7;
+
+                            busy <= 1'b1;
+                            done <= 1'b0;
+
+                        end
+
+                    end
+
+
+                    //================================================
+                    // START
+                    //================================================
+
+                    START:
+                    begin
+
+                        scl_phase      <= 1'b0;
+                        sda_setup_done <= 1'b0;
+
+                        bit_count <= 4'd7;
+
+                    end
+
+
+                    //================================================
+                    // SLAVE ADDRESS
+                    //================================================
+
+                    SLAVE_ADDR:
+                    begin
+
+                        if (scl_phase == 1'b0) begin
+
+                            // SCL is LOW
+                            // First wait for SDA setup delay
+
+                            if (!sda_setup_done) begin
+                                sda_setup_done <= 1'b1;
+                            end
+                            else begin
+                                scl_phase <= 1'b1;
+                            end
+
+                        end
+
+                        else begin
+
+                            // SCL HIGH
+                            // Complete one bit
+
+                            scl_phase      <= 1'b0;
+                            sda_setup_done <= 1'b0;
+
+                            if (bit_count != 0)
+                                bit_count <= bit_count - 1'b1;
+                            else
+                                bit_count <= 4'd7;
+
+                        end
+
+                    end
+
+
+                    //================================================
+                    // SLAVE ACK
+                    //================================================
+
+                    SLAVE_ACK:
+                    begin
+
+                        if (scl_phase == 1'b0) begin
+
+                            scl_phase <= 1'b1;
+
+                        end
+
+                        else begin
+
+                            scl_phase      <= 1'b0;
+                            sda_setup_done <= 1'b0;
+
+                        end
+
+                    end
+
+
+                    //================================================
+                    // POINTER ADDRESS
+                    //================================================
+
+                    POINTER_ADDR:
+                    begin
+
+                        if (scl_phase == 1'b0) begin
+
+                            if (!sda_setup_done) begin
+                                sda_setup_done <= 1'b1;
+                            end
+                            else begin
+                                scl_phase <= 1'b1;
+                            end
+
+                        end
+
+                        else begin
+
+                            scl_phase      <= 1'b0;
+                            sda_setup_done <= 1'b0;
+
+                            if (bit_count != 0)
+                                bit_count <= bit_count - 1'b1;
+                            else
+                                bit_count <= 4'd7;
+
+                        end
+
+                    end
+
+
+                    //================================================
+                    // POINTER ACK
+                    //================================================
+
+                    POINTER_ACK:
+                    begin
+
+                        if (scl_phase == 1'b0) begin
+
+                            scl_phase <= 1'b1;
+
+                        end
+
+                        else begin
+
+                            scl_phase      <= 1'b0;
+                            sda_setup_done <= 1'b0;
+
+                        end
+
+                    end
+
+
+                    //================================================
+                    // DATA
+                    //================================================
+
+                    DATA:
+                    begin
+
+                        if (scl_phase == 1'b0) begin
+
+                            if (!sda_setup_done) begin
+                                sda_setup_done <= 1'b1;
+                            end
+                            else begin
+                                scl_phase <= 1'b1;
+                            end
+
+                        end
+
+                        else begin
+
+                            scl_phase      <= 1'b0;
+                            sda_setup_done <= 1'b0;
+
+                            if (bit_count != 0)
+                                bit_count <= bit_count - 1'b1;
+                            else
+                                bit_count <= 4'd7;
+
+                        end
+
+                    end
+
+
+                    //================================================
+                    // DATA ACK
+                    //================================================
+
+                    DATA_ACK:
+                    begin
+
+                        if (scl_phase == 1'b0) begin
+
+                            scl_phase <= 1'b1;
+
+                        end
+
+                        else begin
+
+                            scl_phase      <= 1'b0;
+                            sda_setup_done <= 1'b0;
+
+                            if (more_data) begin
+
+                                data_reg    <= data_in;
+                                pointer_reg <= pointer_addr;
+                                bit_count   <= 4'd7;
+
+                            end
+
+                        end
+
+                    end
+
+
+                    //================================================
+                    // REPEATED START
+                    //================================================
+
+                    REPEATED_START:
+                    begin
+
+                        if (scl_phase == 1'b0) begin
+
+                            scl_phase <= 1'b1;
+
+                        end
+
+                        else begin
+
+                            scl_phase      <= 1'b0;
+                            sda_setup_done <= 1'b0;
+                            bit_count      <= 4'd7;
+
+                        end
+
+                    end
+
+
+                    //================================================
+                    // STOP
+                    //================================================
+
+                    STOP:
+                    begin
+
+                        if (scl_phase == 1'b0) begin
+
+                            scl_phase <= 1'b1;
+
+                        end
+
+                        else begin
+
+                            scl_phase      <= 1'b0;
+                            sda_setup_done <= 1'b0;
+
+                            busy <= 1'b0;
+                            done <= 1'b1;
+
+                        end
+
+                    end
+
+
+                    default:
+                    begin
+
+                        state <= IDLE;
+
+                        scl_phase      <= 1'b0;
+                        sda_setup_done <= 1'b0;
+
+                        busy <= 1'b0;
+                        done <= 1'b0;
+
+                    end
+
+                endcase
+
+            end
+
+        end
+
+    end
+
+
+    //========================================================
+    // NEXT STATE LOGIC
+    //========================================================
+
+    always @(*)
+    begin
+
+        next_state = state;
 
         case (state)
 
             IDLE:
             begin
-                busy <= 1'b0;
-                done <= 1'b0;
 
-                phase_count    <= 3'd0;
-                scl_phase      <= 1'b0;
-                sda_delay_done <= 1'b0;
+                if (start)
+                    next_state = START;
+                else
+                    next_state = IDLE;
 
-                if (start) begin
-
-                    busy <= 1'b1;
-
-                    addr_reg    <= slave_addr;
-                    pointer_reg <= pointer_addr;
-                    data_reg    <= data_in;
-
-                    bit_count <= 4'd7;
-
-                    state <= START;
-
-                end
             end
 
 
             START:
             begin
 
-                busy <= 1'b1;
-
-                if (phase_count < 3'd4) begin
-                    phase_count <= phase_count + 1'b1;
-                end
-                else begin
-
-                    phase_count    <= 3'd0;
-                    scl_phase      <= 1'b0;
-                    sda_delay_done <= 1'b0;
-
-                    bit_count <= 4'd7;
-
-                    state <= SLAVE_ADDR;
-
-                end
+                next_state = SLAVE_ADDR;
 
             end
 
@@ -135,53 +448,13 @@ always @(posedge clk_50mhz or posedge reset) begin
             SLAVE_ADDR:
             begin
 
-                busy <= 1'b1;
+                if ((scl_phase == 1'b1) &&
+                    (bit_count == 4'd0))
 
-                if (scl_phase == 1'b0) begin
+                    next_state = SLAVE_ACK;
 
-                    if (!sda_delay_done) begin
-                        sda_delay_done <= 1'b1;
-                    end
-
-                    if (phase_count < 3'd4) begin
-                        phase_count <= phase_count + 1'b1;
-                    end
-                    else begin
-
-                        phase_count <= 3'd0;
-                        scl_phase  <= 1'b1;
-
-                    end
-
-                end
-
-                else begin
-
-                    if (phase_count < 3'd4) begin
-                        phase_count <= phase_count + 1'b1;
-                    end
-
-                    else begin
-
-                        phase_count    <= 3'd0;
-                        scl_phase      <= 1'b0;
-                        sda_delay_done <= 1'b0;
-
-                        if (bit_count == 0) begin
-
-                            bit_count <= 4'd7;
-                            state <= SLAVE_ACK;
-
-                        end
-                        else begin
-
-                            bit_count <= bit_count - 1'b1;
-
-                        end
-
-                    end
-
-                end
+                else
+                    next_state = SLAVE_ADDR;
 
             end
 
@@ -189,39 +462,18 @@ always @(posedge clk_50mhz or posedge reset) begin
             SLAVE_ACK:
             begin
 
-                busy <= 1'b1;
+                if (scl_phase == 1'b1) begin
 
-                if (scl_phase == 1'b0) begin
-
-                    if (phase_count < 3'd4) begin
-                        phase_count <= phase_count + 1'b1;
-                    end
-
-                    else begin
-
-                        phase_count <= 3'd0;
-                        scl_phase  <= 1'b1;
-
-                    end
+                    if (sda == 1'b0)
+                        next_state = POINTER_ADDR;
+                    else
+                        next_state = STOP;
 
                 end
 
                 else begin
 
-                    if (phase_count < 3'd4) begin
-                        phase_count <= phase_count + 1'b1;
-                    end
-
-                    else begin
-
-                        phase_count    <= 3'd0;
-                        scl_phase      <= 1'b0;
-                        sda_delay_done <= 1'b0;
-                        bit_count      <= 4'd7;
-
-                        state <= POINTER_ADDR;
-
-                    end
+                    next_state = SLAVE_ACK;
 
                 end
 
@@ -231,54 +483,13 @@ always @(posedge clk_50mhz or posedge reset) begin
             POINTER_ADDR:
             begin
 
-                busy <= 1'b1;
+                if ((scl_phase == 1'b1) &&
+                    (bit_count == 4'd0))
 
-                if (scl_phase == 1'b0) begin
+                    next_state = POINTER_ACK;
 
-                    if (!sda_delay_done) begin
-                        sda_delay_done <= 1'b1;
-                    end
-
-                    if (phase_count < 3'd4) begin
-                        phase_count <= phase_count + 1'b1;
-                    end
-
-                    else begin
-
-                        phase_count <= 3'd0;
-                        scl_phase  <= 1'b1;
-
-                    end
-
-                end
-
-                else begin
-
-                    if (phase_count < 3'd4) begin
-                        phase_count <= phase_count + 1'b1;
-                    end
-
-                    else begin
-
-                        phase_count    <= 3'd0;
-                        scl_phase      <= 1'b0;
-                        sda_delay_done <= 1'b0;
-
-                        if (bit_count == 0) begin
-
-                            bit_count <= 4'd7;
-                            state <= POINTER_ACK;
-
-                        end
-                        else begin
-
-                            bit_count <= bit_count - 1'b1;
-
-                        end
-
-                    end
-
-                end
+                else
+                    next_state = POINTER_ADDR;
 
             end
 
@@ -286,39 +497,18 @@ always @(posedge clk_50mhz or posedge reset) begin
             POINTER_ACK:
             begin
 
-                busy <= 1'b1;
+                if (scl_phase == 1'b1) begin
 
-                if (scl_phase == 1'b0) begin
-
-                    if (phase_count < 3'd4) begin
-                        phase_count <= phase_count + 1'b1;
-                    end
-
-                    else begin
-
-                        phase_count <= 3'd0;
-                        scl_phase  <= 1'b1;
-
-                    end
+                    if (sda == 1'b0)
+                        next_state = DATA;
+                    else
+                        next_state = STOP;
 
                 end
 
                 else begin
 
-                    if (phase_count < 3'd4) begin
-                        phase_count <= phase_count + 1'b1;
-                    end
-
-                    else begin
-
-                        phase_count    <= 3'd0;
-                        scl_phase      <= 1'b0;
-                        sda_delay_done <= 1'b0;
-                        bit_count      <= 4'd7;
-
-                        state <= DATA;
-
-                    end
+                    next_state = POINTER_ACK;
 
                 end
 
@@ -328,54 +518,13 @@ always @(posedge clk_50mhz or posedge reset) begin
             DATA:
             begin
 
-                busy <= 1'b1;
+                if ((scl_phase == 1'b1) &&
+                    (bit_count == 4'd0))
 
-                if (scl_phase == 1'b0) begin
+                    next_state = DATA_ACK;
 
-                    if (!sda_delay_done) begin
-                        sda_delay_done <= 1'b1;
-                    end
-
-                    if (phase_count < 3'd4) begin
-                        phase_count <= phase_count + 1'b1;
-                    end
-
-                    else begin
-
-                        phase_count <= 3'd0;
-                        scl_phase  <= 1'b1;
-
-                    end
-
-                end
-
-                else begin
-
-                    if (phase_count < 3'd4) begin
-                        phase_count <= phase_count + 1'b1;
-                    end
-
-                    else begin
-
-                        phase_count    <= 3'd0;
-                        scl_phase      <= 1'b0;
-                        sda_delay_done <= 1'b0;
-
-                        if (bit_count == 0) begin
-
-                            bit_count <= 4'd7;
-                            state <= DATA_ACK;
-
-                        end
-                        else begin
-
-                            bit_count <= bit_count - 1'b1;
-
-                        end
-
-                    end
-
-                end
+                else
+                    next_state = DATA;
 
             end
 
@@ -383,40 +532,31 @@ always @(posedge clk_50mhz or posedge reset) begin
             DATA_ACK:
             begin
 
-                busy <= 1'b1;
+                if (scl_phase == 1'b1) begin
 
-                if (scl_phase == 1'b0) begin
-
-                    if (phase_count < 3'd4) begin
-                        phase_count <= phase_count + 1'b1;
-                    end
-
-                    else begin
-
-                        phase_count <= 3'd0;
-                        scl_phase  <= 1'b1;
-
-                    end
+                    if (more_data)
+                        next_state = REPEATED_START;
+                    else
+                        next_state = STOP;
 
                 end
 
                 else begin
 
-                    if (phase_count < 3'd4) begin
-                        phase_count <= phase_count + 1'b1;
-                    end
-
-                    else begin
-
-                        phase_count    <= 3'd0;
-                        scl_phase      <= 1'b0;
-                        sda_delay_done <= 1'b0;
-
-                        state <= STOP;
-
-                    end
+                    next_state = DATA_ACK;
 
                 end
+
+            end
+
+
+            REPEATED_START:
+            begin
+
+                if (scl_phase == 1'b1)
+                    next_state = SLAVE_ADDR;
+                else
+                    next_state = REPEATED_START;
 
             end
 
@@ -424,22 +564,273 @@ always @(posedge clk_50mhz or posedge reset) begin
             STOP:
             begin
 
-                busy <= 1'b1;
+                if (scl_phase == 1'b1)
+                    next_state = IDLE;
+                else
+                    next_state = STOP;
 
-                if (phase_count < 3'd4) begin
+            end
 
-                    phase_count <= phase_count + 1'b1;
+
+            default:
+            begin
+
+                next_state = IDLE;
+
+            end
+
+        endcase
+
+    end
+
+
+    //========================================================
+    // SDA / SCL OUTPUT CONTROL
+    //========================================================
+
+    always @(*)
+    begin
+
+        scl_oe = 1'b0;
+        sda_oe = 1'b0;
+
+        case (state)
+
+            //================================================
+            // IDLE
+            //================================================
+
+            IDLE:
+            begin
+
+                scl_oe = 1'b0;
+                sda_oe = 1'b0;
+
+            end
+
+
+            //================================================
+            // START
+            //================================================
+
+            START:
+            begin
+
+                // SCL HIGH
+                // SDA LOW
+
+                scl_oe = 1'b0;
+                sda_oe = 1'b1;
+
+            end
+
+
+            //================================================
+            // SLAVE ADDRESS
+            //================================================
+
+            SLAVE_ADDR:
+            begin
+
+                // SCL control
+
+                if (scl_phase == 1'b0)
+                    scl_oe = 1'b1;
+                else
+                    scl_oe = 1'b0;
+
+
+                // SDA setup delay
+
+                if (sda_setup_done) begin
+
+                    if (addr_reg[bit_count] == 1'b0)
+                        sda_oe = 1'b1;
+                    else
+                        sda_oe = 1'b0;
 
                 end
 
                 else begin
 
-                    phase_count <= 3'd0;
+                    // SDA remains released during setup delay
 
-                    busy <= 1'b0;
-                    done <= 1'b1;
+                    sda_oe = 1'b0;
 
-                    state <= IDLE;
+                end
+
+            end
+
+
+            //================================================
+            // SLAVE ACK
+            //================================================
+
+            SLAVE_ACK:
+            begin
+
+                if (scl_phase == 1'b0)
+                    scl_oe = 1'b1;
+                else
+                    scl_oe = 1'b0;
+
+                // Release SDA
+
+                sda_oe = 1'b0;
+
+            end
+
+
+            //================================================
+            // POINTER ADDRESS
+            //================================================
+
+            POINTER_ADDR:
+            begin
+
+                if (scl_phase == 1'b0)
+                    scl_oe = 1'b1;
+                else
+                    scl_oe = 1'b0;
+
+
+                if (sda_setup_done) begin
+
+                    if (pointer_reg[bit_count] == 1'b0)
+                        sda_oe = 1'b1;
+                    else
+                        sda_oe = 1'b0;
+
+                end
+
+                else begin
+
+                    sda_oe = 1'b0;
+
+                end
+
+            end
+
+
+            //================================================
+            // POINTER ACK
+            //================================================
+
+            POINTER_ACK:
+            begin
+
+                if (scl_phase == 1'b0)
+                    scl_oe = 1'b1;
+                else
+                    scl_oe = 1'b0;
+
+                sda_oe = 1'b0;
+
+            end
+
+
+            //================================================
+            // DATA
+            //================================================
+
+            DATA:
+            begin
+
+                if (scl_phase == 1'b0)
+                    scl_oe = 1'b1;
+                else
+                    scl_oe = 1'b0;
+
+
+                if (sda_setup_done) begin
+
+                    if (data_reg[bit_count] == 1'b0)
+                        sda_oe = 1'b1;
+                    else
+                        sda_oe = 1'b0;
+
+                end
+
+                else begin
+
+                    sda_oe = 1'b0;
+
+                end
+
+            end
+
+
+            //================================================
+            // DATA ACK
+            //================================================
+
+            DATA_ACK:
+            begin
+
+                if (scl_phase == 1'b0)
+                    scl_oe = 1'b1;
+                else
+                    scl_oe = 1'b0;
+
+                sda_oe = 1'b0;
+
+            end
+
+
+            //================================================
+            // REPEATED START
+            //================================================
+
+            REPEATED_START:
+            begin
+
+                if (scl_phase == 1'b0) begin
+
+                    // SCL LOW
+                    scl_oe = 1'b1;
+
+                    // SDA released
+                    sda_oe = 1'b0;
+
+                end
+
+                else begin
+
+                    // SCL HIGH
+                    // SDA LOW
+
+                    scl_oe = 1'b0;
+                    sda_oe = 1'b1;
+
+                end
+
+            end
+
+
+            //================================================
+            // STOP
+            //================================================
+
+            STOP:
+            begin
+
+                if (scl_phase == 1'b0) begin
+
+                    // SCL LOW
+                    // SDA LOW
+
+                    scl_oe = 1'b1;
+                    sda_oe = 1'b1;
+
+                end
+
+                else begin
+
+                    // SCL HIGH
+                    // SDA LOW
+
+                    scl_oe = 1'b0;
+                    sda_oe = 1'b1;
 
                 end
 
@@ -449,169 +840,13 @@ always @(posedge clk_50mhz or posedge reset) begin
             default:
             begin
 
-                state <= IDLE;
-                busy  <= 1'b0;
-                done  <= 1'b0;
+                scl_oe = 1'b0;
+                sda_oe = 1'b0;
+
             end
 
         endcase
 
     end
-
-end
-
-
-always @(*) begin
-
-    scl_oe = 1'b0;
-    sda_oe = 1'b0;
-
-    case (state)
-
-        IDLE:
-        begin
-            scl_oe = 1'b0;
-            sda_oe = 1'b0;
-        end
-
-
-        START:
-        begin
-            scl_oe = 1'b0;
-            sda_oe = 1'b1;
-        end
-
-
-        SLAVE_ADDR:
-        begin
-
-            if (scl_phase == 1'b0)
-                scl_oe = 1'b1;
-            else
-                scl_oe = 1'b0;
-
-            if (sda_delay_done) begin
-
-                if (addr_reg[bit_count] == 1'b0)
-                    sda_oe = 1'b1;
-                else
-                    sda_oe = 1'b0;
-
-            end
-            else begin
-
-                sda_oe = 1'b0;
-
-            end
-
-        end
-
-
-        SLAVE_ACK:
-        begin
-
-            if (scl_phase == 1'b0)
-                scl_oe = 1'b1;
-            else
-                scl_oe = 1'b0;
-
-            sda_oe = 1'b0;
-
-        end
-
-
-        POINTER_ADDR:
-        begin
-
-            if (scl_phase == 1'b0)
-                scl_oe = 1'b1;
-            else
-                scl_oe = 1'b0;
-
-            if (sda_delay_done) begin
-
-                if (pointer_reg[bit_count] == 1'b0)
-                    sda_oe = 1'b1;
-                else
-                    sda_oe = 1'b0;
-
-            end
-            else begin
-
-                sda_oe = 1'b0;
-
-            end
-
-        end
-
-
-        POINTER_ACK:
-        begin
-
-            if (scl_phase == 1'b0)
-                scl_oe = 1'b1;
-            else
-                scl_oe = 1'b0;
-
-            sda_oe = 1'b0;
-
-        end
-
-
-        DATA:
-        begin
-
-            if (scl_phase == 1'b0)
-                scl_oe = 1'b1;
-            else
-                scl_oe = 1'b0;
-
-            if (sda_delay_done) begin
-
-                if (data_reg[bit_count] == 1'b0)
-                    sda_oe = 1'b1;
-                else
-                    sda_oe = 1'b0;
-
-            end
-            else begin
-
-                sda_oe = 1'b0;
-
-            end
-
-        end
-
-
-        DATA_ACK:
-        begin
-
-            if (scl_phase == 1'b0)
-                scl_oe = 1'b1;
-            else
-                scl_oe = 1'b0;
-
-            sda_oe = 1'b0;
-
-        end
-
-
-        STOP:
-        begin
-
-            scl_oe = 1'b0;
-            sda_oe = 1'b1;
-        end
-
-
-        default:
-        begin
-            scl_oe = 1'b0;
-            sda_oe = 1'b0;
-        end
-
-    endcase
-
-end
 
 endmodule

@@ -80,10 +80,8 @@ module top_module(
              read_busy  ? read_sda  :
              1'bz;
 
-    assign busy = rw ? read_busy : write_busy;
-
-    assign done = rw ? read_done : write_done;
-
+    assign busy = write_busy | read_busy;
+assign done = write_done | read_done;
     assign data_out = read_data;
 
 

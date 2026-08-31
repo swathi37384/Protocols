@@ -75,8 +75,10 @@ module top_module(
         .sda         (read_sda)
 
     );
-    assign scl = rw ? read_scl : write_scl;
-    assign sda = rw ? read_sda : write_sda;
+    assign scl = write_busy ? write_scl :read_busy  ? read_scl  :1'bz;
+    assign sda = write_busy ? write_sda :
+             read_busy  ? read_sda  :
+             1'bz;
 
     assign busy = rw ? read_busy : write_busy;
 

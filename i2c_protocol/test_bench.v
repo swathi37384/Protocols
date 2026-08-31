@@ -27,20 +27,20 @@ pullup(sda);
 
 assign sda = slave_sda_oe ? 1'b0 : 1'bz;
 
-top_module uut (
-    .clk_50mhz(clk_50mhz),
-    .reset(reset),
-    .start(start),
-    .rw(rw),
-    .more_data(more_data),
-    .slave_addr(slave_addr),
+top_module uut(
+    .clk_50mhz   (clk_50mhz),
+    .reset       (reset),
+    .start       (start),
+    .rw          (rw),
+    .more_data   (more_data),
+    .slave_addr  (slave_addr),
     .pointer_addr(pointer_addr),
-    .data_in(data_in),
-    .data_out(data_out),
-    .busy(busy),
-    .done(done),
-    .scl(scl),
-    .sda(sda)
+    .data_in     (data_in),
+    .data_out    (data_out),
+    .busy        (busy),
+    .done        (done),
+    .scl         (scl),
+    .sda         (sda)
 );
 
 initial begin
@@ -71,7 +71,6 @@ always @(*) begin
         endcase
 
     end
-
     else begin
 
         case (uut.read_inst.state)
@@ -158,8 +157,7 @@ begin
 
     wait(done == 1'b1);
 
-    #100;
-
+    $display("");
     $display("-----------------------------------------");
     $display("I2C WRITE TRANSACTION COMPLETED");
     $display("-----------------------------------------");
@@ -168,8 +166,6 @@ begin
         $display("WRITE TEST PASSED");
     else
         $display("WRITE TEST FAILED");
-
-    wait(busy == 1'b0);
 
 end
 
@@ -237,8 +233,7 @@ begin
     wait(uut.read_inst.state == uut.read_inst.READ_DATA);
 
     $display("-----------------------------------------");
-    $display("Slave sending data = %h",
-             slave_read_data);
+    $display("Slave sending data = %h", slave_read_data);
     $display("-----------------------------------------");
 
     wait(uut.read_inst.state == uut.read_inst.MASTER_NACK);
@@ -270,7 +265,6 @@ begin
         $display("-----------------------------------------");
 
     end
-
     else begin
 
         $display("-----------------------------------------");
@@ -280,8 +274,6 @@ begin
         $display("-----------------------------------------");
 
     end
-
-    wait(busy == 1'b0);
 
 end
 

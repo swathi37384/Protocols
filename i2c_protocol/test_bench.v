@@ -2,543 +2,312 @@
 
 module top;
 
-    //==================================================
-    // SIGNALS
-    //==================================================
+reg clk_50mhz;
+reg reset;
+reg start;
+reg rw;
+reg more_data;
 
-    reg clk_50mhz;
-    reg reset;
-    reg start;
-    reg rw;
-    reg more_data;
+reg [6:0] slave_addr;
+reg [7:0] pointer_addr;
+reg [7:0] data_in;
 
-    reg [6:0] slave_addr;
-    reg [7:0] pointer_addr;
-    reg [7:0] data_in;
+wire [7:0] data_out;
+wire busy;
+wire done;
 
-    wire [7:0] data_out;
-    wire busy;
-    wire done;
+wire scl;
+wire sda;
 
-    wire scl;
-    wire sda;
+reg slave_sda_oe;
+reg [7:0] slave_read_data;
 
+pullup(scl);
+pullup(sda);
 
-    //==================================================
-    // I2C BUS
-    //==================================================
+assign sda = slave_sda_oe ? 1'b0 : 1'bz;
 
-    pullup(scl);
-    pullup(sda);
+top_module uut (
+    .clk_50mhz(clk_50mhz),
+    .reset(reset),
+    .start(start),
+    .rw(rw),
+    .more_data(more_data),
+    .slave_addr(slave_addr),
+    .pointer_addr(pointer_addr),
+    .data_in(data_in),
+    .data_out(data_out),
+    .busy(busy),
+    .done(done),
+    .scl(scl),
+    .sda(sda)
+);
 
+initial begin
+    clk_50mhz = 1'b0;
+    forever #10 clk_50mhz = ~clk_50mhz;
+end
 
-    //==================================================
-    // TOP MODULE
-    //==================================================
+always @(*) begin
 
-    top_module uut (
-        .clk_50mhz    (clk_50mhz),
-        .reset        (reset),
-        .start        (start),
-        .rw           (rw),
-        .more_data    (more_data),
-        .slave_addr   (slave_addr),
-        .pointer_addr (pointer_addr),
-        .data_in      (data_in),
-        .data_out     (data_out),
-        .busy         (busy),
-        .done          (done),
-        .scl          (scl),
-        .sda          (sda)
-    );
+    slave_sda_oe = 1'b0;
 
+    if (rw == 1'b0) begin
 
-    //==================================================
-    // 50 MHz CLOCK
-    //==================================================
+        case (uut.write_inst.state)
 
-    initial begin
-        clk_50mhz = 1'b0;
+            uut.write_inst.SLAVE_ACK:
+                slave_sda_oe = 1'b1;
 
-        forever #10 clk_50mhz = ~clk_50mhz;
-    end
+            uut.write_inst.POINTER_ACK:
+                slave_sda_oe = 1'b1;
 
+            uut.write_inst.DATA_ACK:
+                slave_sda_oe = 1'b1;
 
-    //==================================================
-    // SLAVE MODEL
-    //==================================================
+            default:
+                slave_sda_oe = 1'b0;
 
-    reg slave_sda_oe;
-
-    reg [7:0] rx_byte;
-    reg [7:0] slave_data;
-
-    integer i;
-
-
-    // Slave can only pull SDA LOW
-    assign sda = slave_sda_oe ? 1'b0 : 1'bz;
-
-
-    //==================================================
-    // INITIAL SLAVE VALUES
-    //==================================================
-
-    initial begin
-
-        slave_sda_oe = 1'b0;
-
-        rx_byte = 8'h00;
-
-        // Data which slave will send during READ
-        slave_data = 8'hB6;
+        endcase
 
     end
 
+    else begin
 
-    //==================================================
-    // RECEIVE ONE BYTE
-    //==================================================
+        case (uut.read_inst.state)
 
-    task receive_byte;
+            uut.read_inst.SLAVE_ACK_W:
+                slave_sda_oe = 1'b1;
 
-        begin
+            uut.read_inst.POINTER_ACK:
+                slave_sda_oe = 1'b1;
 
-            for(i = 7; i >= 0; i = i - 1) begin
+            uut.read_inst.SLAVE_ACK_R:
+                slave_sda_oe = 1'b1;
 
-                // SDA is stable while SCL is HIGH
-                wait(scl == 1'b0);
+            uut.read_inst.READ_DATA:
+            begin
 
-                wait(scl == 1'b1);
-
-                rx_byte[i] = sda;
-
-            end
-
-            wait(scl == 1'b0);
-
-        end
-
-    endtask
-
-
-    //==================================================
-    // SLAVE ACK
-    //==================================================
-
-    task slave_ack;
-
-        begin
-
-            // Slave pulls SDA LOW
-            slave_sda_oe = 1'b1;
-
-            // Wait for ACK clock
-            wait(scl == 1'b1);
-
-            wait(scl == 1'b0);
-
-            // Release SDA
-            slave_sda_oe = 1'b0;
-
-        end
-
-    endtask
-
-
-    //==================================================
-    // SLAVE SEND ONE BYTE
-    //==================================================
-
-    task send_byte;
-
-        begin
-
-            for(i = 7; i >= 0; i = i - 1) begin
-
-                // Change SDA only when SCL is LOW
-                wait(scl == 1'b0);
-
-                if(slave_data[i] == 1'b0)
+                if (slave_read_data[uut.read_inst.bit_count] == 1'b0)
                     slave_sda_oe = 1'b1;
                 else
                     slave_sda_oe = 1'b0;
 
-                // Hold SDA while SCL is HIGH
-                wait(scl == 1'b1);
-
             end
 
-            // Release SDA after 8 bits
-            wait(scl == 1'b0);
+            default:
+                slave_sda_oe = 1'b0;
 
-            slave_sda_oe = 1'b0;
-
-        end
-
-    endtask
-
-
-    //==================================================
-    // SLAVE OPERATION
-    //==================================================
-
-    initial begin
-
-        //================================================
-        // WAIT FOR WRITE START
-        //================================================
-
-        wait(scl == 1'b1);
-        wait(sda == 1'b0);
-
-        $display("");
-        $display("==========================================");
-        $display("SLAVE: WRITE START DETECTED");
-        $display("==========================================");
-
-
-        //================================================
-        // WRITE ADDRESS + W
-        //================================================
-
-        receive_byte;
-
-        $display("SLAVE: ADDRESS + W = %h", rx_byte);
-
-        slave_ack;
-
-
-        //================================================
-        // WRITE POINTER
-        //================================================
-
-        receive_byte;
-
-        $display("SLAVE: POINTER = %h", rx_byte);
-
-        slave_ack;
-
-
-        //================================================
-        // WRITE DATA
-        //================================================
-
-        receive_byte;
-
-        $display("SLAVE: DATA = %h", rx_byte);
-
-        if(rx_byte == 8'hB6)
-            $display("SLAVE: WRITE DATA CORRECT");
-        else
-            $display("SLAVE: WRITE DATA WRONG");
-
-        slave_ack;
-
-
-        //================================================
-        // WAIT FOR WRITE STOP
-        //================================================
-
-        wait(scl == 1'b1);
-        wait(sda == 1'b1);
-
-        $display("");
-        $display("==========================================");
-        $display("SLAVE: WRITE COMPLETE");
-        $display("==========================================");
-
-
-        //================================================
-        // WAIT FOR READ START
-        //================================================
-
-        wait(scl == 1'b1);
-        wait(sda == 1'b0);
-
-        $display("");
-        $display("==========================================");
-        $display("SLAVE: READ START DETECTED");
-        $display("==========================================");
-
-
-        //================================================
-        // READ ADDRESS + W
-        //================================================
-
-        receive_byte;
-
-        $display("SLAVE: READ ADDRESS + W = %h", rx_byte);
-
-        slave_ack;
-
-
-        //================================================
-        // READ POINTER
-        //================================================
-
-        receive_byte;
-
-        $display("SLAVE: READ POINTER = %h", rx_byte);
-
-        slave_ack;
-
-
-        //================================================
-        // WAIT FOR REPEATED START
-        //================================================
-
-        wait(scl == 1'b1);
-        wait(sda == 1'b0);
-
-        $display("");
-        $display("==========================================");
-        $display("SLAVE: REPEATED START DETECTED");
-        $display("==========================================");
-
-
-        //================================================
-        // READ ADDRESS + R
-        //================================================
-
-        receive_byte;
-
-        $display("SLAVE: READ ADDRESS + R = %h", rx_byte);
-
-        slave_ack;
-
-
-        //================================================
-        // SLAVE SEND DATA
-        //================================================
-
-        slave_data = 8'hB6;
-
-        $display("SLAVE: SENDING DATA = %h", slave_data);
-
-        send_byte;
-
-
-        //================================================
-        // MASTER NACK
-        //================================================
-
-        wait(scl == 1'b1);
-
-        if(sda == 1'b1)
-            $display("SLAVE: MASTER NACK");
-        else
-            $display("SLAVE: MASTER ACK");
-
-        wait(scl == 1'b0);
-
-        slave_sda_oe = 1'b0;
-
-
-        //================================================
-        // READ COMPLETE
-        //================================================
-
-        $display("");
-        $display("==========================================");
-        $display("SLAVE: READ COMPLETE");
-        $display("==========================================");
+        endcase
 
     end
 
+end
 
-    //==================================================
-    // MASTER TEST
-    //==================================================
+initial begin
 
-    initial begin
+    reset = 1'b1;
+    start = 1'b0;
+    rw = 1'b0;
+    more_data = 1'b0;
 
-        //================================================
-        // VCD
-        //================================================
+    slave_addr = 7'h57;
+    pointer_addr = 8'h2A;
+    data_in = 8'hA5;
+    slave_read_data = 8'hA5;
 
-        $dumpfile("i2c_top.vcd");
-        $dumpvars(0, top);
+    #100;
 
+    reset = 1'b0;
 
-        //================================================
-        // INITIAL VALUES
-        //================================================
+    #100;
 
-        reset = 1'b1;
+    write_test;
 
-        start = 1'b0;
+    #500;
 
-        rw = 1'b0;
+    read_test;
 
-        more_data = 1'b0;
+    #500;
 
-        slave_addr = 7'h50;
+    $display("");
+    $display("=========================================");
+    $display("       I2C ALL TESTS COMPLETED");
+    $display("=========================================");
 
-        pointer_addr = 8'h30;
+    $finish;
 
-        data_in = 8'hB6;
+end
 
+task write_test;
 
-        //================================================
-        // RESET
-        //================================================
+begin
 
-        #100;
+    $display("");
+    $display("-----------------------------------------");
+    $display("          I2C WRITE TEST");
+    $display("-----------------------------------------");
 
-        reset = 1'b0;
+    rw = 1'b0;
 
-        #100;
+    start = 1'b1;
 
+    wait(busy == 1'b1);
 
-        //================================================
-        // WRITE OPERATION
-        //================================================
+    start = 1'b0;
 
-        $display("");
-        $display("==========================================");
-        $display("MASTER: START WRITE");
-        $display("==========================================");
+    wait(done == 1'b1);
 
-        // rw = 0 means WRITE
-        rw = 1'b0;
+    #100;
 
-        slave_addr = 7'h50;
+    $display("-----------------------------------------");
+    $display("I2C WRITE TRANSACTION COMPLETED");
+    $display("-----------------------------------------");
 
-        pointer_addr = 8'h30;
+    if (done == 1'b1)
+        $display("WRITE TEST PASSED");
+    else
+        $display("WRITE TEST FAILED");
 
-        data_in = 8'hB6;
+    wait(busy == 1'b0);
 
-        more_data = 1'b0;
+end
 
+endtask
 
-        // Start WRITE
-        start = 1'b1;
+task read_test;
 
-        // Wait until write becomes busy
-        wait(busy == 1'b1);
+begin
 
-        // Remove start
-        start = 1'b0;
+    $display("");
+    $display("-----------------------------------------");
+    $display("           I2C READ TEST");
+    $display("-----------------------------------------");
 
-        // Wait until WRITE is complete
-        wait(done == 1'b1);
+    rw = 1'b1;
 
-        $display("");
-        $display("MASTER: WRITE DONE");
+    start = 1'b1;
 
+    wait(busy == 1'b1);
 
-        //================================================
-        // WAIT BETWEEN WRITE AND READ
-        //================================================
+    start = 1'b0;
 
-        #1000;
+    wait(uut.read_inst.state == uut.read_inst.START);
 
+    $display("-----------------------------------------");
+    $display("START detected");
+    $display("-----------------------------------------");
 
-        //================================================
-        // READ OPERATION
-        //================================================
+    wait(uut.read_inst.state == uut.read_inst.SLAVE_ADDR_W);
 
-        $display("");
-        $display("==========================================");
-        $display("MASTER: START READ");
-        $display("==========================================");
+    $display("-----------------------------------------");
+    $display("Slave receiving WRITE address");
+    $display("-----------------------------------------");
 
-        // rw = 1 means READ
-        rw = 1'b1;
+    wait(uut.read_inst.state == uut.read_inst.SLAVE_ACK_W);
 
-        slave_addr = 7'h50;
+    $display("Slave ACK WRITE address");
 
-        pointer_addr = 8'h30;
+    wait(uut.read_inst.state == uut.read_inst.POINTER_ADDR);
 
+    $display("-----------------------------------------");
+    $display("Slave receiving POINTER address");
+    $display("-----------------------------------------");
 
-        // Start READ
-        start = 1'b1;
+    wait(uut.read_inst.state == uut.read_inst.POINTER_ACK);
 
-        // Wait until read becomes busy
-        wait(busy == 1'b1);
+    $display("Slave ACK POINTER address");
 
-        // Remove start
-        start = 1'b0;
+    wait(uut.read_inst.state == uut.read_inst.REPEATED_START);
 
-        // Wait until READ is complete
-        wait(done == 1'b1);
+    $display("-----------------------------------------");
+    $display("REPEATED START detected");
+    $display("-----------------------------------------");
 
+    wait(uut.read_inst.state == uut.read_inst.SLAVE_ADDR_R);
 
-        //================================================
-        // READ RESULT
-        //================================================
+    $display("-----------------------------------------");
+    $display("Slave receiving READ address");
+    $display("-----------------------------------------");
 
-        $display("");
-        $display("MASTER: READ DONE");
+    wait(uut.read_inst.state == uut.read_inst.SLAVE_ACK_R);
 
-        $display("MASTER: DATA READ = %h", data_out);
+    $display("Slave ACK READ address");
 
+    wait(uut.read_inst.state == uut.read_inst.READ_DATA);
 
-        //================================================
-        // CHECK RESULT
-        //================================================
+    $display("-----------------------------------------");
+    $display("Slave sending data = %h",
+             slave_read_data);
+    $display("-----------------------------------------");
 
-        if(data_out == 8'hB6) begin
+    wait(uut.read_inst.state == uut.read_inst.MASTER_NACK);
 
-            $display("");
-            $display("==========================================");
-            $display("             TEST PASSED");
-            $display("==========================================");
+    $display("-----------------------------------------");
+    $display("Master NACK");
+    $display("-----------------------------------------");
 
-            $display("WRITE DATA = B6");
-            $display("READ DATA  = B6");
+    wait(uut.read_inst.state == uut.read_inst.STOP);
 
-            $display("==========================================");
+    $display("-----------------------------------------");
+    $display("STOP detected");
+    $display("-----------------------------------------");
 
-        end
+    wait(done == 1'b1);
 
-        else begin
+    #20;
 
-            $display("");
-            $display("==========================================");
-            $display("             TEST FAILED");
-            $display("==========================================");
+    $display("-----------------------------------------");
+    $display("I2C READ TRANSACTION COMPLETED");
+    $display("-----------------------------------------");
 
-            $display("EXPECTED DATA = B6");
-            $display("ACTUAL DATA   = %h", data_out);
+    if (data_out == slave_read_data) begin
 
-            $display("==========================================");
-
-        end
-
-
-        #1000;
-
-        $finish;
+        $display("-----------------------------------------");
+        $display("READ TEST PASSED");
+        $display("Expected data = %h", slave_read_data);
+        $display("Received data = %h", data_out);
+        $display("-----------------------------------------");
 
     end
 
+    else begin
 
-    //==================================================
-    // SIMPLE MONITOR
-    //==================================================
-
-    initial begin
-
-        forever begin
-
-            #1000;
-
-            $display(
-                "TIME=%0t | SCL=%b | SDA=%b | RW=%b | START=%b | BUSY=%b | DONE=%b | DATA=%h",
-                $time,
-                scl,
-                sda,
-                rw,
-                start,
-                busy,
-                done,
-                data_out
-            );
-
-        end
+        $display("-----------------------------------------");
+        $display("READ TEST FAILED");
+        $display("Expected data = %h", slave_read_data);
+        $display("Received data = %h", data_out);
+        $display("-----------------------------------------");
 
     end
+
+    wait(busy == 1'b0);
+
+end
+
+endtask
+
+initial begin
+
+    $monitor(
+        "TIME=%0t | RW=%b | START=%b | SCL=%b | SDA=%b | BUSY=%b | DONE=%b | DATA=%h",
+        $time,
+        rw,
+        start,
+        scl,
+        sda,
+        busy,
+        done,
+        data_out
+    );
+
+end
+
+initial begin
+
+    $dumpfile("i2c_top.vcd");
+    $dumpvars(0, top);
+
+end
 
 endmodule

@@ -1,93 +1,313 @@
-module top_module(
-    input        clk_50mhz,
-    input        reset,
+`timescale 1ns/1ps
 
-    input        start,
-    input        rw,              // 0 = WRITE, 1 = READ
+module top;
 
-    input        more_data,
+reg clk_50mhz;
+reg reset;
+reg start;
+reg rw;
+reg more_data;
 
-    input  [6:0] slave_addr,
-    input  [7:0] pointer_addr,
-    input  [7:0] data_in,
+reg [6:0] slave_addr;
+reg [7:0] pointer_addr;
+reg [7:0] data_in;
 
-    output [7:0] data_out,
+wire [7:0] data_out;
+wire busy;
+wire done;
 
-    output       busy,
-    output       done,
+wire scl;
+wire sda;
 
-    inout        scl,
-    inout        sda
+reg slave_sda_oe;
+reg [7:0] slave_read_data;
 
+pullup(scl);
+pullup(sda);
+
+assign sda = slave_sda_oe ? 1'b0 : 1'bz;
+
+top_module uut (
+    .clk_50mhz(clk_50mhz),
+    .reset(reset),
+    .start(start),
+    .rw(rw),
+    .more_data(more_data),
+    .slave_addr(slave_addr),
+    .pointer_addr(pointer_addr),
+    .data_in(data_in),
+    .data_out(data_out),
+    .busy(busy),
+    .done(done),
+    .scl(scl),
+    .sda(sda)
 );
 
-    wire write_busy;
-    wire write_done;
+initial begin
+    clk_50mhz = 1'b0;
+    forever #10 clk_50mhz = ~clk_50mhz;
+end
 
-    wire read_busy;
-    wire read_done;
+always @(*) begin
 
-    wire [7:0] read_data;
+    slave_sda_oe = 1'b0;
 
-    wire write_scl;
-    wire write_sda;
+    if (rw == 1'b0) begin
 
-    wire read_scl;
-    wire read_sda;
+        case (uut.write_inst.state)
 
-    wire write_start;
-   wire read_start;
-  assign write_start=start && !rw;
- assign read_start=start && rw; 
+            uut.write_inst.SLAVE_ACK:
+                slave_sda_oe = 1'b1;
 
-      write u_write (
+            uut.write_inst.POINTER_ACK:
+                slave_sda_oe = 1'b1;
 
-        .clk_50mhz   (clk_50mhz),
-        .reset       (reset),
+            uut.write_inst.DATA_ACK:
+                slave_sda_oe = 1'b1;
 
-        .start       (write_start),
-        .more_data   (more_data),
+            default:
+                slave_sda_oe = 1'b0;
 
-        .slave_addr  (slave_addr),
-        .pointer_addr(pointer_addr),
-        .data_in     (data_in),
+        endcase
 
-        .busy        (write_busy),
-        .done        (write_done),
+    end
 
-        .scl         (write_scl),
-        .sda         (write_sda)
+    else begin
 
+        case (uut.read_inst.state)
+
+            uut.read_inst.SLAVE_ACK_W:
+                slave_sda_oe = 1'b1;
+
+            uut.read_inst.POINTER_ACK:
+                slave_sda_oe = 1'b1;
+
+            uut.read_inst.SLAVE_ACK_R:
+                slave_sda_oe = 1'b1;
+
+            uut.read_inst.READ_DATA:
+            begin
+
+                if (slave_read_data[uut.read_inst.bit_count] == 1'b0)
+                    slave_sda_oe = 1'b1;
+                else
+                    slave_sda_oe = 1'b0;
+
+            end
+
+            default:
+                slave_sda_oe = 1'b0;
+
+        endcase
+
+    end
+
+end
+
+initial begin
+
+    reset = 1'b1;
+    start = 1'b0;
+    rw = 1'b0;
+    more_data = 1'b0;
+
+    slave_addr = 7'h57;
+    pointer_addr = 8'h2A;
+    data_in = 8'hA5;
+    slave_read_data = 8'hA5;
+
+    #100;
+
+    reset = 1'b0;
+
+    #100;
+
+    write_test;
+
+    #500;
+
+    read_test;
+
+    #500;
+
+    $display("");
+    $display("=========================================");
+    $display("       I2C ALL TESTS COMPLETED");
+    $display("=========================================");
+
+    $finish;
+
+end
+
+task write_test;
+
+begin
+
+    $display("");
+    $display("-----------------------------------------");
+    $display("          I2C WRITE TEST");
+    $display("-----------------------------------------");
+
+    rw = 1'b0;
+
+    start = 1'b1;
+
+    wait(busy == 1'b1);
+
+    start = 1'b0;
+
+    wait(done == 1'b1);
+
+    #100;
+
+    $display("-----------------------------------------");
+    $display("I2C WRITE TRANSACTION COMPLETED");
+    $display("-----------------------------------------");
+
+    if (done == 1'b1)
+        $display("WRITE TEST PASSED");
+    else
+        $display("WRITE TEST FAILED");
+
+    wait(busy == 1'b0);
+
+end
+
+endtask
+
+task read_test;
+
+begin
+
+    $display("");
+    $display("-----------------------------------------");
+    $display("           I2C READ TEST");
+    $display("-----------------------------------------");
+
+    rw = 1'b1;
+
+    start = 1'b1;
+
+    wait(busy == 1'b1);
+
+    start = 1'b0;
+
+    wait(uut.read_inst.state == uut.read_inst.START);
+
+    $display("-----------------------------------------");
+    $display("START detected");
+    $display("-----------------------------------------");
+
+    wait(uut.read_inst.state == uut.read_inst.SLAVE_ADDR_W);
+
+    $display("-----------------------------------------");
+    $display("Slave receiving WRITE address");
+    $display("-----------------------------------------");
+
+    wait(uut.read_inst.state == uut.read_inst.SLAVE_ACK_W);
+
+    $display("Slave ACK WRITE address");
+
+    wait(uut.read_inst.state == uut.read_inst.POINTER_ADDR);
+
+    $display("-----------------------------------------");
+    $display("Slave receiving POINTER address");
+    $display("-----------------------------------------");
+
+    wait(uut.read_inst.state == uut.read_inst.POINTER_ACK);
+
+    $display("Slave ACK POINTER address");
+
+    wait(uut.read_inst.state == uut.read_inst.REPEATED_START);
+
+    $display("-----------------------------------------");
+    $display("REPEATED START detected");
+    $display("-----------------------------------------");
+
+    wait(uut.read_inst.state == uut.read_inst.SLAVE_ADDR_R);
+
+    $display("-----------------------------------------");
+    $display("Slave receiving READ address");
+    $display("-----------------------------------------");
+
+    wait(uut.read_inst.state == uut.read_inst.SLAVE_ACK_R);
+
+    $display("Slave ACK READ address");
+
+    wait(uut.read_inst.state == uut.read_inst.READ_DATA);
+
+    $display("-----------------------------------------");
+    $display("Slave sending data = %h",
+             slave_read_data);
+    $display("-----------------------------------------");
+
+    wait(uut.read_inst.state == uut.read_inst.MASTER_NACK);
+
+    $display("-----------------------------------------");
+    $display("Master NACK");
+    $display("-----------------------------------------");
+
+    wait(uut.read_inst.state == uut.read_inst.STOP);
+
+    $display("-----------------------------------------");
+    $display("STOP detected");
+    $display("-----------------------------------------");
+
+    wait(done == 1'b1);
+
+    #20;
+
+    $display("-----------------------------------------");
+    $display("I2C READ TRANSACTION COMPLETED");
+    $display("-----------------------------------------");
+
+    if (data_out == slave_read_data) begin
+
+        $display("-----------------------------------------");
+        $display("READ TEST PASSED");
+        $display("Expected data = %h", slave_read_data);
+        $display("Received data = %h", data_out);
+        $display("-----------------------------------------");
+
+    end
+
+    else begin
+
+        $display("-----------------------------------------");
+        $display("READ TEST FAILED");
+        $display("Expected data = %h", slave_read_data);
+        $display("Received data = %h", data_out);
+        $display("-----------------------------------------");
+
+    end
+
+    wait(busy == 1'b0);
+
+end
+
+endtask
+
+initial begin
+
+    $monitor(
+        "TIME=%0t | RW=%b | START=%b | SCL=%b | SDA=%b | BUSY=%b | DONE=%b | DATA=%h",
+        $time,
+        rw,
+        start,
+        scl,
+        sda,
+        busy,
+        done,
+        data_out
     );
 
+end
 
-    read u_read (
+initial begin
 
-        .clk_50mhz   (clk_50mhz),
-        .reset       (reset),
+    $dumpfile("i2c_top.vcd");
+    $dumpvars(0, top);
 
-        .start       (read_start),
-
-        .slave_addr  (slave_addr),
-        .pointer_addr(pointer_addr),
-
-        .data_out    (read_data),
-
-        .busy        (read_busy),
-        .done        (read_done),
-
-        .scl         (read_scl),
-        .sda         (read_sda)
-
-    );
-    assign scl = rw ? read_scl : write_scl;
-    assign sda = rw ? read_sda : write_sda;
-
-    assign busy = rw ? read_busy : write_busy;
-
-    assign done = rw ? read_done : write_done;
-
-    assign data_out = read_data;
-
+end
 
 endmodule

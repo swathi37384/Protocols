@@ -75,14 +75,13 @@ module top_module(
         .sda         (read_sda)
 
     );
-    assign scl = write_busy ? write_scl :read_busy  ? read_scl  :1'bz;
-    assign sda = write_busy ? write_sda :
-             read_busy  ? read_sda  :
-             1'bz;
+   assign scl = rw ? read_scl : write_scl;
+assign sda = rw ? read_sda : write_sda;
 
-    assign busy = write_busy | read_busy;
-assign done = write_done | read_done;
-    assign data_out = read_data;
+assign busy = rw ? read_busy : write_busy;
+assign done = rw ? read_done : write_done;
+
+assign data_out = read_data;
 
 
 endmodule

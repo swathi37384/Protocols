@@ -1,87 +1,60 @@
-module top_module(
+module i2c_master_top (
     input        clk_50mhz,
     input        reset,
 
-    input        start,
-    input        rw,              // 0 = WRITE, 1 = READ
-
-    input        more_data,
+    input        start,        
+    input        rw,           // 0 = write, 1 = read
+    input        more_data,    
 
     input  [6:0] slave_addr,
-    input  [7:0] pointer_addr,
-    input  [7:0] data_in,
+    input  [7:0] pointer_addr, 
+    input  [7:0] data_in,      
 
-    output [7:0] data_out,
-
+    output [7:0] data_out,     
     output       busy,
     output       done,
 
     inout        scl,
     inout        sda
-
 );
 
-    wire write_busy;
-    wire write_done;
+    // Gate the start pulse to the FSM selected by rw
+    wire start_write = start & ~rw;
+    wire start_read  = start &  rw;
 
-    wire read_busy;
-    wire read_done;
+    wire       busy_w, done_w;
+    wire       busy_r, done_r;
+    wire [7:0] data_out_r;
 
-    wire [7:0] read_data;
-
-    wire write_scl;
-    wire write_sda;
-
-    wire read_scl;
-    wire read_sda;
-
-      write write_inst (
-
-        .clk_50mhz   (clk_50mhz),
-        .reset       (reset),
-
-        .start       (start && !rw),
-        .more_data   (more_data),
-
-        .slave_addr  (slave_addr),
-        .pointer_addr(pointer_addr),
-        .data_in     (data_in),
-
-        .busy        (write_busy),
-        .done        (write_done),
-
-        .scl         (write_scl),
-        .sda         (write_sda)
-
+    write u_i2c_write (
+        .clk_50mhz    (clk_50mhz),
+        .reset        (reset),
+        .start        (start_write),
+        .more_data    (more_data),
+        .slave_addr   (slave_addr),
+        .pointer_addr (pointer_addr),
+        .data_in      (data_in),
+        .busy         (busy_w),
+        .done         (done_w),
+        .scl          (scl),
+        .sda          (sda)
     );
 
-
-    read read_inst (
-
-        .clk_50mhz   (clk_50mhz),
-        .reset       (reset),
-
-        .start       (start && rw),
-
-        .slave_addr  (slave_addr),
-        .pointer_addr(pointer_addr),
-
-        .data_out    (read_data),
-
-        .busy        (read_busy),
-        .done        (read_done),
-
-        .scl         (read_scl),
-        .sda         (read_sda)
-
+    read u_i2c_read (
+        .clk_50mhz    (clk_50mhz),
+        .reset        (reset),
+        .start        (start_read),
+        .slave_addr   (slave_addr),
+        .pointer_addr (pointer_addr),
+        .data_out     (data_out_r),
+        .busy         (busy_r),
+        .done         (done_r),
+        .scl          (scl),
+        .sda          (sda)
     );
-   assign scl = rw ? read_scl : write_scl;
-assign sda = rw ? read_sda : write_sda;
-
-assign busy = rw ? read_busy : write_busy;
-assign done = rw ? read_done : write_done;
-
-assign data_out = read_data;
-
+    
+    assign busy     = rw ? busy_r : busy_w;
+    assign done     = rw ? done_r : done_w;
+    assign data_out = data_out_r;
 
 endmodule

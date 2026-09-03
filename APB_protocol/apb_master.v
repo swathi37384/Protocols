@@ -23,7 +23,7 @@ reg [7:0]waddr_reg;
 always@(posedge clk)begin
 	if(!rst)begin
 		state<=idle;
-		pselx<=0;
+		psel<=0;
 		paddr<=8'd0;
 		pwdata<=8'd0;
 		pwrite<=0;
@@ -65,7 +65,7 @@ always@(*)begin
 	psel=0;
 	penable=0;
 	pwrite=write_reg;
-	pwdata=wdate_reg;
+	pwdata=wdata_reg;
 	paddr=waddr_reg;
 
 	case(state)

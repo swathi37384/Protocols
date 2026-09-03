@@ -23,6 +23,8 @@ master mst(.clk(clk),
 	.psel(psel),
 	.paddr(paddr),
 	.pwdata(pwdata),
+	.prdata(prdata),
+	.pwrite(pwrite),
 	.rdata(rdata),
 	.penable(penable));
 

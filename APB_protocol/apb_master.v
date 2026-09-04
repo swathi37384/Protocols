@@ -8,7 +8,7 @@ input write,
 output reg psel,
 output reg [7:0]paddr,
 output reg [7:0]pwdata,
-output reg [7:0]rdata,
+output [7:0]rdata,
 output reg pwrite,
 output reg penable);
 
@@ -17,10 +17,7 @@ parameter idle =2'd0,
 	access=2'd2;
 reg [1:0]state,next_state;
 
-reg write_reg;
-reg [7:0]wdata_reg;
-reg [7:0]waddr_reg;
-always@(posedge clk)begin
+always@(posedge clk or negedge rst)begin
 	if(!rst)begin
 		state<=idle;
 		psel<=0;
@@ -28,19 +25,39 @@ always@(posedge clk)begin
 		pwdata<=8'd0;
 		pwrite<=0;
 		penable<=0;
+		
 	end
 	else begin
 		state<=next_state;
-		if(state==idle&&transfer)begin
-			waddr_reg<=addr;
-			wdata_reg<=wdata;
-			write_reg<=write;
-		end
-		if(state==access && pready && !write_reg)begin
-			rdata<=prdata;
-		end
 	end
 end
+always@(*)begin
+		case(state)
+			idle:begin
+				psel=0;
+				penable=0;
+			end
+
+			setup :begin
+			       psel=1;
+		               penable=0;
+			       paddr=addr;
+                               pwdata=wdata;
+                               pwrite=write;
+		       end
+
+		       access:begin
+			       psel=1;
+			       penable=1;
+		       end
+
+		       default:begin
+			       psel=0;
+			       penable=0;
+		       end
+	       endcase
+end
+
 
 always@(*)begin
 	case(state)
@@ -61,32 +78,6 @@ always@(*)begin
 	endcase
 end
 
-always@(*)begin
-	psel=0;
-	penable=0;
-	pwrite=write_reg;
-	pwdata=wdata_reg;
-	paddr=waddr_reg;
+assign rdata = (!pwrite && psel && penable) ? prdata : 8'h00;
 
-	case(state)
-		idle:begin
-			psel=0;
-			penable=0;
-		end
-
-		setup:begin
-			psel=1;
-			penable=0;
-		end
-
-		access:begin
-			psel=1;
-			penable=1;
-		end
-	endcase
-end
 endmodule
-
-
-
-
